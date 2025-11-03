@@ -67,9 +67,10 @@ const VariantInfo = ({priceMode,variant}) => {
   VERBOSE && console.log('variant',variant);
   return (
     <li>
-        { variant.images.map(image => <img src={image.url} height={200} width={200} alt={image.label}/>) }<br/>
+        { variant.images && variant.images.length > 0 && variant.images.map((image, idx) => <img key={idx} src={image.url} height={200} width={200} alt={image.label || 'Product image'}/>) }
+        { variant.images && variant.images.length > 0 && <br/> }
         SKU: { variant.sku } <br></br>
-        Variant Key:  { variant.key } <br></br>
+        { variant.key && <span>Variant Key: { variant.key } <br></br></span> }
         { priceMode == 'Embedded'
         ?
           <div>
@@ -144,7 +145,11 @@ const VariantInfo = ({priceMode,variant}) => {
           </div>
         }
         <p></p>
-        <h4>Attributes:</h4> { variant.attributes.map(attr => <AttributeInfo key={attr.name} attr={attr} />) } <br></br>
+        { variant.attributes && variant.attributes.length > 0 && (
+          <>
+            <h4>Attributes:</h4> { variant.attributes.map(attr => <AttributeInfo key={attr.name} attr={attr} />) } <br></br>
+          </>
+        ) }
         <p></p>
     </li>
   );

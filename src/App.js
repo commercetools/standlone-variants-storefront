@@ -32,6 +32,12 @@ function App() {
     storeName: sessionStorage.getItem('storeName'),
     customerGroupId: sessionStorage.getItem('customerGroupId'),
     customerGroupName: sessionStorage.getItem('customerGroupName'),
+    // Credentials from sessionStorage or env vars as fallback
+    projectKey: sessionStorage.getItem('projectKey') || process.env.REACT_APP_PROJECT_KEY || '',
+    clientId: sessionStorage.getItem('clientId') || process.env.REACT_APP_CLIENT_ID || '',
+    clientSecret: sessionStorage.getItem('clientSecret') || '',
+    authUrl: sessionStorage.getItem('authUrl') || process.env.REACT_APP_AUTH_URL || '',
+    apiUrl: sessionStorage.getItem('apiUrl') || process.env.REACT_APP_API_URL || '',
   });
   
   return(
