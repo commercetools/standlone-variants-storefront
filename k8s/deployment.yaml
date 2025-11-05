@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ct-react-test
+  namespace: platform-prototype
+  labels:
+    app: ct-react-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ct-react-test
+  template:
+    metadata:
+      labels:
+        app: ct-react-test
+    spec:
+      containers:
+      - name: ct-react-test
+        image: gcr.io/commercetools-platform/ct-react-test:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+

@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ct-react-test
+  namespace: platform-prototype
+  labels:
+    app: ct-react-test
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: ct-react-test.prototype.europe-west1.gcp.commercetools.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ct-react-test
+            port:
+              number: 80
+

@@ -5,6 +5,7 @@ import ProductList from './product-list';
 import ContextDisplay from '../context/context-display';
 import AppContext from '../../appContext';
 import config from '../../config';
+import { initializeClients } from '../../commercetools';
 
 function HomePage() {
   const [context, setContext] = useContext(AppContext);
@@ -81,6 +82,24 @@ function HomePage() {
         sessionStorage.setItem('clientSecret', decodedClientSecret);
         sessionStorage.setItem('authUrl', authUrlToUse);
         sessionStorage.setItem('apiUrl', apiUrlToUse);
+        
+        // Initialize commercetools clients
+        try {
+          const result = initializeClients({
+            projectKey: decodedProjectKey,
+            clientId: decodedClientId,
+            clientSecret: decodedClientSecret,
+            authUrl: authUrlToUse,
+            apiUrl: apiUrlToUse
+          });
+          if (result) {
+            console.log('commercetools clients initialized successfully from URL parameters');
+          } else {
+            console.error('Failed to initialize commercetools clients from URL parameters');
+          }
+        } catch (error) {
+          console.error('Error initializing commercetools clients from URL parameters:', error);
+        }
 
         // Optionally clean URL after connecting (remove sensitive params)
         // Uncomment the line below if you want to remove params from URL after connection
@@ -120,7 +139,52 @@ function HomePage() {
     sessionStorage.setItem('clientSecret', clientSecret);
     sessionStorage.setItem('authUrl', authUrl);
     sessionStorage.setItem('apiUrl', apiUrl);
+    
+    // Initialize commercetools clients with the new configuration
+    try {
+      const result = initializeClients({
+        projectKey,
+        clientId,
+        clientSecret,
+        authUrl,
+        apiUrl
+      });
+      if (result) {
+        console.log('commercetools clients initialized successfully');
+        // Force re-render to update components
+        window.location.reload();
+      } else {
+        console.error('Failed to initialize commercetools clients');
+        alert('Failed to initialize clients. Please check your configuration.');
+      }
+    } catch (error) {
+      console.error('Error initializing commercetools clients:', error);
+      alert('Error initializing clients: ' + error.message);
+    }
   }
+  
+  // Initialize from sessionStorage on mount if available
+  useEffect(() => {
+    const storedProjectKey = sessionStorage.getItem('projectKey');
+    const storedClientId = sessionStorage.getItem('clientId');
+    const storedClientSecret = sessionStorage.getItem('clientSecret');
+    const storedAuthUrl = sessionStorage.getItem('authUrl');
+    const storedApiUrl = sessionStorage.getItem('apiUrl');
+    
+    if (storedProjectKey && storedClientId && storedClientSecret && storedAuthUrl && storedApiUrl) {
+      try {
+        initializeClients({
+          projectKey: storedProjectKey,
+          clientId: storedClientId,
+          clientSecret: storedClientSecret,
+          authUrl: storedAuthUrl,
+          apiUrl: storedApiUrl
+        });
+      } catch (error) {
+        console.error('Error initializing from sessionStorage:', error);
+      }
+    }
+  }, []);
 
 
   const displayProjectKey = context.projectKey || process.env.REACT_APP_PROJECT_KEY || '(not set)';
