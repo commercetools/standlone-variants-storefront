@@ -15,8 +15,9 @@ function HomePage() {
   const [scoped, setScoped] = useState(false);
   const hasAutoConnected = useRef(false);
 
-  // Get credentials from URL params, context, or env vars
+  // Get credentials from URL params, context, sessionStorage, or env vars
   const getInitialValue = (paramName, contextKey, envVar) => {
+    // First check URL params (highest priority)
     const urlParam = searchParams.get(paramName);
     if (urlParam) {
       try {
@@ -25,7 +26,17 @@ function HomePage() {
         return urlParam;
       }
     }
-    return context[contextKey] || process.env[envVar] || '';
+    // Then check context
+    if (context[contextKey]) {
+      return context[contextKey];
+    }
+    // Then check sessionStorage
+    const stored = sessionStorage.getItem(contextKey);
+    if (stored) {
+      return stored;
+    }
+    // Finally fall back to env vars
+    return process.env[envVar] || '';
   };
 
   // Form fields for credentials
@@ -34,6 +45,51 @@ function HomePage() {
   const [clientSecret, setClientSecret] = useState(() => getInitialValue('clientSecret', 'clientSecret', ''));
   const [authUrl, setAuthUrl] = useState(() => getInitialValue('authUrl', 'authUrl', 'REACT_APP_AUTH_URL'));
   const [apiUrl, setApiUrl] = useState(() => getInitialValue('apiUrl', 'apiUrl', 'REACT_APP_API_URL'));
+  
+  // Update form fields when URL params change
+  useEffect(() => {
+    const urlProjectKey = searchParams.get('projectKey');
+    const urlClientId = searchParams.get('clientId');
+    const urlClientSecret = searchParams.get('clientSecret');
+    const urlAuthUrl = searchParams.get('authUrl');
+    const urlApiUrl = searchParams.get('apiUrl');
+    
+    if (urlProjectKey) {
+      try {
+        setProjectKey(decodeURIComponent(urlProjectKey));
+      } catch {
+        setProjectKey(urlProjectKey);
+      }
+    }
+    if (urlClientId) {
+      try {
+        setClientId(decodeURIComponent(urlClientId));
+      } catch {
+        setClientId(urlClientId);
+      }
+    }
+    if (urlClientSecret) {
+      try {
+        setClientSecret(decodeURIComponent(urlClientSecret));
+      } catch {
+        setClientSecret(urlClientSecret);
+      }
+    }
+    if (urlAuthUrl) {
+      try {
+        setAuthUrl(decodeURIComponent(urlAuthUrl));
+      } catch {
+        setAuthUrl(urlAuthUrl);
+      }
+    }
+    if (urlApiUrl) {
+      try {
+        setApiUrl(decodeURIComponent(urlApiUrl));
+      } catch {
+        setApiUrl(urlApiUrl);
+      }
+    }
+  }, [searchParams]);
 
   // Auto-connect if URL parameters are provided (only projectKey, clientId, clientSecret)
   useEffect(() => {
@@ -45,6 +101,8 @@ function HomePage() {
     const urlProjectKey = searchParams.get('projectKey');
     const urlClientId = searchParams.get('clientId');
     const urlClientSecret = searchParams.get('clientSecret');
+    const urlAuthUrl = searchParams.get('authUrl');
+    const urlApiUrl = searchParams.get('apiUrl');
 
     // Check if we have all required URL parameters
     if (urlProjectKey && urlClientId && urlClientSecret) {
@@ -55,10 +113,10 @@ function HomePage() {
         const decodedProjectKey = decodeURIComponent(urlProjectKey);
         const decodedClientId = decodeURIComponent(urlClientId);
         const decodedClientSecret = decodeURIComponent(urlClientSecret);
-
-        // Use env vars or context for authUrl and apiUrl
-        const authUrlToUse = context.authUrl || process.env.REACT_APP_AUTH_URL || '';
-        const apiUrlToUse = context.apiUrl || process.env.REACT_APP_API_URL || '';
+        
+        // Use URL params, then context, then env vars for authUrl and apiUrl
+        const authUrlToUse = urlAuthUrl ? decodeURIComponent(urlAuthUrl) : (context.authUrl || process.env.REACT_APP_AUTH_URL || '');
+        const apiUrlToUse = urlApiUrl ? decodeURIComponent(urlApiUrl) : (context.apiUrl || process.env.REACT_APP_API_URL || '');
 
         // Update form fields
         setProjectKey(decodedProjectKey);
@@ -268,6 +326,58 @@ function HomePage() {
           }}
         >
           Connect
+        </button>
+        <button
+          onClick={() => {
+            // Generate shareable URL with current config
+            const params = new URLSearchParams();
+            if (projectKey) params.set('projectKey', projectKey);
+            if (clientId) params.set('clientId', clientId);
+            if (clientSecret) params.set('clientSecret', clientSecret);
+            if (authUrl) params.set('authUrl', authUrl);
+            if (apiUrl) params.set('apiUrl', apiUrl);
+            const shareUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+            
+            // Try to copy to clipboard with better error handling
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(shareUrl).then(() => {
+                alert('Shareable URL copied to clipboard!\n\n' + shareUrl);
+              }).catch((err) => {
+                console.error('Clipboard copy failed:', err);
+                // Fallback: show prompt
+                prompt('Copy this URL to share:', shareUrl);
+              });
+            } else {
+              // Fallback: use prompt or create temporary textarea
+              try {
+                const textarea = document.createElement('textarea');
+                textarea.value = shareUrl;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-999999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('Shareable URL copied to clipboard!\n\n' + shareUrl);
+              } catch (err) {
+                console.error('Copy failed:', err);
+                // Final fallback: show prompt
+                prompt('Copy this URL to share:', shareUrl);
+              }
+            }
+          }}
+          style={{
+            padding: '8px 20px',
+            backgroundColor: '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            marginTop: '10px',
+            marginLeft: '10px'
+          }}
+        >
+          Copy Shareable Link
         </button>
       </div>
 
