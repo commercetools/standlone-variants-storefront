@@ -106,7 +106,20 @@ function ChannelPicker() {
   return (
     <div>
       Channel:&nbsp;&nbsp;  
-      <select value={selectedChannel} onChange={onChangeChannel} disabled={error && channels.length === 0}>
+      <select 
+        value={selectedChannel} 
+        onChange={onChangeChannel} 
+        disabled={error && channels.length === 0}
+        style={{ 
+          padding: '5px 10px', 
+          fontSize: '14px', 
+          minWidth: '150px',
+          backgroundColor: '#fff',
+          color: '#333',
+          border: '1px solid #ccc',
+          borderRadius: '4px'
+        }}
+      >
         <option value="">(none selected)</option>
         {channelOptions}
       </select>

@@ -13,7 +13,6 @@ export function setQueryArgs() {
 
   const queryArgs = {};
 
-  console.log('currency',currency);
   if(currency) {
     queryArgs.priceCurrency=currency;
     if(country) {

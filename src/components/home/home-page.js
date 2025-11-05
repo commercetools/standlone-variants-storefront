@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect } from 'react';
+import { useState, useContext, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import SearchInput from './search-input';
 import ProductList from './product-list';
@@ -12,6 +12,7 @@ function HomePage() {
   const [isSubmitted, setSubmitted] = useState(false);
   const [search, setSearch] = useState('');
   const [scoped, setScoped] = useState(false);
+  const hasAutoConnected = useRef(false);
 
   // Get credentials from URL params, context, or env vars
   const getInitialValue = (paramName, contextKey, envVar) => {
@@ -35,12 +36,19 @@ function HomePage() {
 
   // Auto-connect if URL parameters are provided (only projectKey, clientId, clientSecret)
   useEffect(() => {
+    // Only run once on mount
+    if (hasAutoConnected.current) {
+      return;
+    }
+
     const urlProjectKey = searchParams.get('projectKey');
     const urlClientId = searchParams.get('clientId');
     const urlClientSecret = searchParams.get('clientSecret');
 
     // Check if we have all required URL parameters
     if (urlProjectKey && urlClientId && urlClientSecret) {
+      hasAutoConnected.current = true;
+
       // Decode URL parameters
       try {
         const decodedProjectKey = decodeURIComponent(urlProjectKey);
@@ -81,7 +89,7 @@ function HomePage() {
         console.error('Error parsing URL parameters:', error);
       }
     }
-  }, []); // Only run once on mount - auto-connect if URL params are present
+  }, [searchParams, context, setContext]); // Include dependencies to satisfy React hooks rules
 
   const onChangeSearch = (event) => {
     setSearch(event.target.value);

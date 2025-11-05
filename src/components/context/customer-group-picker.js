@@ -108,7 +108,20 @@ function CustomerGroupPicker() {
   return (
     <div>
       Customer Group:&nbsp;&nbsp;  
-      <select value={selected} onChange={onChangeCustomerGroup} disabled={error && customerGroups.length === 0}>
+      <select 
+        value={selected} 
+        onChange={onChangeCustomerGroup} 
+        disabled={error && customerGroups.length === 0}
+        style={{ 
+          padding: '5px 10px', 
+          fontSize: '14px', 
+          minWidth: '150px',
+          backgroundColor: '#fff',
+          color: '#333',
+          border: '1px solid #ccc',
+          borderRadius: '4px'
+        }}
+      >
         <option value="">(none selected)</option>
         {customerGroupOptions}
       </select>

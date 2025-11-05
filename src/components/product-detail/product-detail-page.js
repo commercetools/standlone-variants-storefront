@@ -1,8 +1,13 @@
 import config from '../../config';
-import { useEffect, useState, useContext } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useState, useContext, useCallback } from 'react';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import VariantInfo from './variant-info';
-import ContextDisplay from '../context/context-display';
+import AttributeSelector from './attribute-selector';
+import CurrencyPicker from '../context/currency-picker';
+import CountryPicker from '../context/country-picker';
+import ChannelPicker from '../context/channel-picker';
+import StorePicker from '../context/store-picker';
+import CustomerGroupPicker from '../context/customer-group-picker';
 import AppContext from '../../appContext';
 import { setQueryArgs } from '../../util/searchUtil';
 import { formatPrice } from '../../util/priceUtil';
@@ -15,29 +20,13 @@ const ProductDetailPage = () => {
   const [context, setContext] = useContext(AppContext);
   const [product, setProduct] = useState(null);
   const [otherVariants, setOtherVariants] = useState([]);
+  const [allVariants, setAllVariants] = useState([]); // All variants including selected one
   const [error, setError] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const variantsPerPage = 10;
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    // Sync context from sessionStorage to display current values
-    setContext((prevContext) => ({
-      ...prevContext,
-      currency: sessionStorage.getItem('currency') || prevContext.currency || '',
-      country: sessionStorage.getItem('country') || prevContext.country || '',
-      channelId: sessionStorage.getItem('channelId') || prevContext.channelId || '',
-      channelName: sessionStorage.getItem('channelName') || prevContext.channelName || '',
-      storeKey: sessionStorage.getItem('storeKey') || prevContext.storeKey || '',
-      storeName: sessionStorage.getItem('storeName') || prevContext.storeName || '',
-      customerGroupId: sessionStorage.getItem('customerGroupId') || prevContext.customerGroupId || '',
-      customerGroupName: sessionStorage.getItem('customerGroupName') || prevContext.customerGroupName || '',
-    }));
-
-    // Reset and fetch when product ID or variant ID changes
-    setProduct(null);
-    setOtherVariants([]);
-    fetchProduct(id, variantId);
-  }, [id, variantId, setContext]);
-
-  const getAccessToken = async () => {
+  const getAccessToken = useCallback(async () => {
     const authUrl = context.authUrl || process.env.REACT_APP_AUTH_URL;
     const clientId = context.clientId || process.env.REACT_APP_CLIENT_ID;
     const clientSecret = context.clientSecret || process.env.REACT_APP_CLIENT_SECRET;
@@ -61,39 +50,67 @@ const ProductDetailPage = () => {
 
     const data = await response.json();
     return data.access_token;
-  };
+  }, [context.authUrl, context.clientId, context.clientSecret]);
 
-  const findVariantById = (variants, variantId) => {
+  const findVariantById = useCallback((variants, variantId) => {
     const variantIdStr = variantId.toString();
     return variants.find(v => {
       const vid = v.id?.variantId || v.id;
       return vid === variantIdStr || String(vid) === variantIdStr;
     });
-  };
+  }, []);
 
-  const fetchProduct = async (productId, requestedVariantId) => {
+  const fetchProduct = useCallback(async (productId, requestedVariantId) => {
     if (!productId || productId === 'undefined') {
       return;
     }
 
-    if (productId !== context.productId) {
-      setContext({ ...context, productId });
-    }
-
-    if (!context.projectKey || !context.apiUrl) {
+    // Get fresh context values for this fetch
+    const currentContext = context;
+    
+    if (!currentContext.projectKey || !currentContext.apiUrl) {
       setError('Missing project configuration. Please configure on the home page.');
       return;
     }
 
     try {
-      const projectKey = context.projectKey;
-      const apiUrl = context.apiUrl;
-      const queryArgs = setQueryArgs();
+      setError(null); // Clear any previous errors
+      
+      const projectKey = currentContext.projectKey;
+      const apiUrl = currentContext.apiUrl;
+    const queryArgs = setQueryArgs();
 
-      // Fetch all variants for this product to find the requested one
+      // Use in-store variant projections endpoint
+      // Default to 'default' store if no store is selected
+      const storeKey = currentContext.storeKey || 'default';
       const whereClause = encodeURIComponent(`product(id="${productId}")`);
-      const priceCurrency = queryArgs.priceCurrency || 'EUR';
-      const url = `${apiUrl}/${projectKey}/standalone-variant-projections?where=${whereClause}&staged=false&limit=100&priceCurrency=${priceCurrency}`;
+      const priceCurrency = currentContext.currency || queryArgs.priceCurrency || 'EUR';
+      
+      // Build query parameters for price selection
+      const queryParams = [];
+      queryParams.push(`where=${whereClause}`);
+      queryParams.push('staged=false');
+      queryParams.push('limit=500');
+      queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
+      
+      // Add optional price selection parameters
+      // USD prices require country=US, so automatically set it for USD currency
+      if (priceCurrency === 'USD') {
+        // For USD, use explicitly selected country or default to US
+        queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
+      } else if (currentContext.country) {
+        // For other currencies, use selected country if available
+        queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country)}`);
+      }
+      if (currentContext.channelId) {
+        queryParams.push(`priceChannel=${encodeURIComponent(currentContext.channelId)}`);
+      }
+      if (currentContext.customerGroupId) {
+        queryParams.push(`priceCustomerGroup=${encodeURIComponent(currentContext.customerGroupId)}`);
+      }
+      
+      // Use in-store endpoint: /in-store/key={storeKey}/standalone-variant-projections
+      const url = `${apiUrl}/${projectKey}/in-store/key=${storeKey}/standalone-variant-projections?${queryParams.join('&')}`;
 
       const accessToken = await getAccessToken();
       const response = await fetch(url, {
@@ -122,17 +139,24 @@ const ProductDetailPage = () => {
           }
         }
 
-        // Get other variants (excluding the selected one, limit to 5)
+        // Get all other variants (excluding the selected one, no limit - will paginate later)
         const selectedId = selectedVariant.id?.variantId || selectedVariant.id;
-        const others = data.results
-          .filter(v => {
-            const vid = v.id?.variantId || v.id;
-            return vid !== selectedId;
-          })
-          .slice(0, 5);
+        const others = data.results.filter(v => {
+          const vid = v.id?.variantId || v.id;
+          return vid !== selectedId;
+        });
 
         setProduct(selectedVariant);
         setOtherVariants(others);
+        setAllVariants(data.results); // Store all variants for attribute selector
+        setCurrentPage(1); // Reset to first page when product changes
+
+        // Update URL with variant ID if not present (always have a variant in URL)
+        if (!requestedVariantId && selectedId) {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set('variant', selectedId);
+          navigate(`/product-detail/${productId}?${newParams.toString()}`, { replace: true });
+        }
       } else {
         setError(`No standalone variants found for product ID: ${productId}`);
       }
@@ -140,6 +164,56 @@ const ProductDetailPage = () => {
       console.error('Error fetching product:', error);
       setError(error.message);
     }
+  }, [context, getAccessToken, findVariantById, searchParams, navigate]);
+
+  useEffect(() => {
+    // Sync context from sessionStorage to display current values
+    setContext((prevContext) => ({
+      ...prevContext,
+      currency: sessionStorage.getItem('currency') || prevContext.currency || '',
+      country: sessionStorage.getItem('country') || prevContext.country || '',
+      channelId: sessionStorage.getItem('channelId') || prevContext.channelId || '',
+      channelName: sessionStorage.getItem('channelName') || prevContext.channelName || '',
+      storeKey: sessionStorage.getItem('storeKey') || prevContext.storeKey || 'default',
+      storeName: sessionStorage.getItem('storeName') || prevContext.storeName || '',
+      customerGroupId: sessionStorage.getItem('customerGroupId') || prevContext.customerGroupId || '',
+      customerGroupName: sessionStorage.getItem('customerGroupName') || prevContext.customerGroupName || '',
+    }));
+  }, [setContext]);
+
+  // Initial fetch and refetch when product ID or variant ID changes
+  useEffect(() => {
+    if (id) {
+      // Reset and fetch when product ID or variant ID changes
+      setProduct(null);
+      setOtherVariants([]);
+      setAllVariants([]);
+      setError(null);
+      fetchProduct(id, variantId);
+    }
+  }, [id, variantId, fetchProduct]);
+
+  // Refetch when context changes (store, currency, etc.)
+  useEffect(() => {
+    if (id) {
+      // Always refetch when context changes to get updated prices/variants
+      // Reset state first to show loading state
+      setProduct(null);
+      setOtherVariants([]);
+      setAllVariants([]);
+      setError(null);
+      // Then fetch with new context
+      fetchProduct(id, variantId);
+    }
+  }, [context.storeKey, context.currency, context.country, context.channelId, context.customerGroupId, id, variantId, fetchProduct]);
+
+  // Handle variant change from attribute selector
+  const handleVariantChange = (variantId) => {
+    // Update URL with new variant
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('variant', variantId);
+    navigate(`/product-detail/${id}?${newParams.toString()}`, { replace: true });
+    // fetchProduct will be called by the useEffect watching variantId
   };
 
   const getLocalizedText = (text, fallback = '') => {
@@ -147,6 +221,37 @@ const ProductDetailPage = () => {
     if (typeof text === 'string') return text;
     return text[config.locale] || text.en || fallback;
   };
+
+  const getAttributeValue = (variant, attributeName) => {
+    const attr = variant.attributes?.find(a => a.name === attributeName);
+    return attr ? String(attr.value) : null;
+  };
+
+  // Sort variants by size attribute (if available)
+  const sortedVariants = [...otherVariants].sort((a, b) => {
+    const sizeA = getAttributeValue(a, 'size');
+    const sizeB = getAttributeValue(b, 'size');
+    
+    if (!sizeA && !sizeB) return 0;
+    if (!sizeA) return 1;
+    if (!sizeB) return -1;
+    
+    // Try to sort numerically if both are numbers
+    const numA = parseFloat(sizeA);
+    const numB = parseFloat(sizeB);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return numA - numB;
+    }
+    
+    // Otherwise sort alphabetically
+    return sizeA.localeCompare(sizeB);
+  });
+
+  // Pagination logic
+  const totalPages = Math.ceil(sortedVariants.length / variantsPerPage);
+  const startIndex = (currentPage - 1) * variantsPerPage;
+  const endIndex = startIndex + variantsPerPage;
+  const paginatedVariants = sortedVariants.slice(startIndex, endIndex);
 
   if (!product) {
     return <div>No product selected</div>;
@@ -156,89 +261,218 @@ const ProductDetailPage = () => {
   const productDescription = getLocalizedText(product.description, '');
 
   const variantTileStyle = {
-    border: '1px solid #ccc',
+    border: '2px solid #e0e0e0',
     padding: '15px',
     borderRadius: '8px',
     width: '200px',
     textAlign: 'center',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+    transition: 'all 0.3s ease',
+    backgroundColor: '#fff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   };
 
   const handleVariantTileHover = (e, isEntering) => {
     if (isEntering) {
       e.currentTarget.style.borderColor = '#007bff';
-      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-      e.currentTarget.style.transform = 'translateY(-2px)';
+      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,123,255,0.2)';
+      e.currentTarget.style.transform = 'translateY(-4px)';
     } else {
-      e.currentTarget.style.borderColor = '#ccc';
-      e.currentTarget.style.boxShadow = 'none';
+      e.currentTarget.style.borderColor = '#e0e0e0';
+      e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
       e.currentTarget.style.transform = 'translateY(0)';
     }
   };
 
   return (
-    <div>
-      <ContextDisplay />
-      <h1>{productName}</h1>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+      {/* Context Dropdowns at Top */}
+      <div style={{ 
+        marginBottom: '30px', 
+        padding: '20px', 
+        border: '1px solid #ddd', 
+        borderRadius: '8px', 
+        backgroundColor: '#f9f9f9',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}>
+        <h3 style={{ marginBottom: '15px', color: '#333', fontSize: '20px' }}>Context</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '25px', alignItems: 'center' }}>
+          <CurrencyPicker />
+          <CountryPicker />
+          <ChannelPicker />
+          <StorePicker />
+          <CustomerGroupPicker />
+        </div>
+      </div>
+
       {error && <h5 style={{ color: 'red' }}>{error}</h5>}
 
-      {product.sku && (
-        <div>
-          <strong>SKU:</strong> {product.sku}
-        </div>
+      {/* Product Information Section */}
+      <div style={{ 
+        marginBottom: '30px', 
+        padding: '25px', 
+        border: '1px solid #ddd', 
+        borderRadius: '8px',
+        backgroundColor: '#fff',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}>
+        <h2 style={{ marginBottom: '15px', color: '#333', fontSize: '24px' }}>Product Information</h2>
+        <h1 style={{ marginBottom: '15px', color: '#222', fontSize: '32px' }}>{productName}</h1>
+        {productDescription && (
+          <div style={{ marginTop: '15px' }}>
+            <h3 style={{ marginBottom: '10px', color: '#555', fontSize: '18px' }}>Description</h3>
+            <p style={{ color: '#666', lineHeight: '1.6' }}>{productDescription}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Attribute Selector */}
+      {allVariants.length > 0 && (
+        <AttributeSelector
+          variants={allVariants}
+          selectedVariant={product}
+          onVariantChange={handleVariantChange}
+        />
       )}
 
-      <h3>Variant Details:</h3>
-      <VariantInfo priceMode="Standalone" variant={product} />
+      {/* Variant Information Section */}
+      <div style={{ 
+        marginBottom: '30px', 
+        padding: '25px', 
+        border: '1px solid #ddd', 
+        borderRadius: '8px',
+        backgroundColor: '#fff',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}>
+        <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Variant Information</h2>
+        {product.sku && (
+          <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+            <strong style={{ color: '#555' }}>SKU:</strong> <span style={{ color: '#333' }}>{product.sku}</span>
+          </div>
+        )}
+        {product.key && (
+          <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+            <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
+          </div>
+        )}
 
-      <h3>Description</h3>
-      <p>{productDescription}</p>
+        {product.images?.length > 0 && (() => {
+          // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
+          const colorToHex = (colorName) => {
+            const colorMap = {
+              'black': '#000000',
+              'grey': '#808080',
+              'gray': '#808080', // Alias for grey
+              'beige': '#F5F5DC',
+              'white': '#FFFFFF',
+              'blue': '#0000FF',
+              'brown': '#A52A2A',
+              'turquoise': '#40E0D0',
+              'petrol': '#005F6A',
+              'green': '#008000',
+              'red': '#FF0000',
+              'purple': '#800080',
+              'pink': '#FFC0CB',
+              'orange': '#FFA500',
+              'yellow': '#FFFF00',
+              'oliv': '#808000',
+              'gold': '#FFD700',
+              'silver': '#C0C0C0',
+              'multicolored': '#FF00FF' // Magenta for multicolored
+            };
+            return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
+          };
 
-      {product.attributes?.length > 0 && (
-        <div>
-          <h3>Attributes:</h3>
-          <ul>
-            {product.attributes.map((attr, idx) => (
-              <li key={idx}>
-                <strong>{attr.name}:</strong> {String(attr.value)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          const colorValue = getAttributeValue(product, 'color');
+          const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
 
-      {product.images?.length > 0 && (
-        <div>
-          <h3>Images:</h3>
-          <ul>
-            {product.images.map((img, idx) => (
-              <li key={idx}>
-                <img src={img.url} alt={productName} style={{ maxWidth: '200px' }} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          return (
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>Images:</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                {product.images.map((img, idx) => (
+                  <img 
+                    key={idx} 
+                    src={img.url} 
+                    alt={productName} 
+                    style={{ 
+                      maxWidth: '250px', 
+                      maxHeight: '250px',
+                      borderRadius: '8px',
+                      border: `3px solid ${borderColor}`,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      objectFit: 'contain'
+                    }} 
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        <VariantInfo priceMode="Standalone" variant={product} />
+      </div>
 
       {otherVariants?.length > 0 && (
-        <div>
-          <h3>Other Variants:</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
-            {otherVariants.map((variant) => {
+        <div style={{ 
+          marginTop: '30px', 
+          padding: '25px', 
+          border: '1px solid #ddd', 
+          borderRadius: '8px',
+          backgroundColor: '#fff',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+        }}>
+          <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Other Variants ({otherVariants.length})</h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '20px' }}>
+            {paginatedVariants.map((variant, idx) => {
               const variantName = getLocalizedText(variant.name, 'Unknown');
               const variantImage = variant.images?.[0]?.url;
               const variantProductId = variant.product?.id;
               const variantIdForUrl = variant.id?.variantId || variant.id;
+              const sizeValue = getAttributeValue(variant, 'size');
+              const colorValue = getAttributeValue(variant, 'color');
+              const styleValue = getAttributeValue(variant, 'style');
+
+              // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
+              const colorToHex = (colorName) => {
+                const colorMap = {
+                  'black': '#000000',
+                  'grey': '#808080',
+                  'gray': '#808080', // Alias for grey
+                  'beige': '#F5F5DC',
+                  'white': '#FFFFFF',
+                  'blue': '#0000FF',
+                  'brown': '#A52A2A',
+                  'turquoise': '#40E0D0',
+                  'petrol': '#005F6A',
+                  'green': '#008000',
+                  'red': '#FF0000',
+                  'purple': '#800080',
+                  'pink': '#FFC0CB',
+                  'orange': '#FFA500',
+                  'yellow': '#FFFF00',
+                  'oliv': '#808000',
+                  'gold': '#FFD700',
+                  'silver': '#C0C0C0',
+                  'multicolored': '#FF00FF' // Magenta for multicolored
+                };
+                return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
+              };
+
+              const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
 
               return (
                 <Link
-                  key={variant.id}
+                  key={variantIdForUrl || variant.id || idx}
                   to={`/product-detail/${variantProductId}?variant=${variantIdForUrl}`}
                   style={{ textDecoration: 'none', color: 'inherit' }}
                 >
                   <div
-                    style={variantTileStyle}
+                    style={{
+                      ...variantTileStyle,
+                      borderColor: borderColor,
+                      borderWidth: '3px'
+                    }}
                     onMouseEnter={(e) => handleVariantTileHover(e, true)}
                     onMouseLeave={(e) => handleVariantTileHover(e, false)}
                   >
@@ -257,6 +491,21 @@ const ProductDetailPage = () => {
                     <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
                       {variantName}
                     </div>
+                    {sizeValue && (
+                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
+                        Size: {sizeValue}
+                      </div>
+                    )}
+                    {colorValue && (
+                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
+                        Color: {colorValue}
+                      </div>
+                    )}
+                    {styleValue && (
+                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
+                        Style: {styleValue}
+                      </div>
+                    )}
                     {variant.sku && (
                       <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
                         SKU: {variant.sku}
@@ -272,6 +521,84 @@ const ProductDetailPage = () => {
               );
             })}
           </div>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '15px', 
+              justifyContent: 'center',
+              marginTop: '20px',
+              paddingTop: '20px',
+              borderTop: '1px solid #eee'
+            }}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                style={{ 
+                  padding: '10px 20px', 
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer', 
+                  opacity: currentPage === 1 ? 0.5 : 1,
+                  backgroundColor: currentPage === 1 ? '#ccc' : '#007bff',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage !== 1) {
+                    e.currentTarget.style.backgroundColor = '#0056b3';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage !== 1) {
+                    e.currentTarget.style.backgroundColor = '#007bff';
+                  }
+                }}
+              >
+                Previous
+              </button>
+              <span style={{ 
+                padding: '0 15px',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                color: '#333'
+              }}>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                style={{ 
+                  padding: '10px 20px', 
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', 
+                  opacity: currentPage === totalPages ? 0.5 : 1,
+                  backgroundColor: currentPage === totalPages ? '#ccc' : '#007bff',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage !== totalPages) {
+                    e.currentTarget.style.backgroundColor = '#0056b3';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage !== totalPages) {
+                    e.currentTarget.style.backgroundColor = '#007bff';
+                  }
+                }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

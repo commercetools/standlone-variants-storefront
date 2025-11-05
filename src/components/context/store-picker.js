@@ -32,6 +32,19 @@ function StorePicker() {
     }
   }, [context.projectKey, context.apiUrl]);
 
+  // Set default store to 'default' if no store is selected
+  useEffect(() => {
+    if (stores.length > 0 && !context.storeKey) {
+      const defaultStore = stores.find(s => s.key === 'default');
+      if (defaultStore) {
+        const storeName = defaultStore.name[config.locale];
+        setContext({ ...context, storeKey: 'default', storeName });
+        sessionStorage.setItem('storeKey', 'default');
+        sessionStorage.setItem('storeName', storeName);
+      }
+    }
+  }, [stores, context, setContext]);
+
   const getAccessToken = async () => {
     const authUrl = context.authUrl || process.env.REACT_APP_AUTH_URL;
     const clientId = context.clientId || process.env.REACT_APP_CLIENT_ID;
@@ -93,18 +106,35 @@ function StorePicker() {
     }
   };
 
-  const storeOptions = stores.length 
-    ? stores.map(s => <option key={s.key} value={s.key}>{s.name[config.locale]}</option>)
-    : [];
-
   const storeKey = context?.storeKey || '';
 
   return (
     <div>
       Store:&nbsp;&nbsp;  
-      <select value={storeKey} onChange={onChangeStore} disabled={error && stores.length === 0}>
-        <option value="">(none selected)</option>
-        {storeOptions}
+      <select 
+        value={storeKey} 
+        onChange={onChangeStore} 
+        disabled={error && stores.length === 0}
+        style={{ 
+          padding: '5px 10px', 
+          fontSize: '14px', 
+          minWidth: '150px',
+          backgroundColor: '#fff',
+          color: '#333',
+          border: '1px solid #ccc',
+          borderRadius: '4px'
+        }}
+      >
+        <option value="" style={{ backgroundColor: '#fff', color: '#333' }}>(none selected)</option>
+        {stores.map(s => (
+          <option 
+            key={s.key} 
+            value={s.key} 
+            style={{ backgroundColor: '#fff', color: '#333' }}
+          >
+            {s.name[config.locale] || s.key}
+          </option>
+        ))}
       </select>
       {error && <span style={{color: 'orange', marginLeft: '10px'}}>{error}</span>}
     </div>

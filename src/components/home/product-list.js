@@ -44,17 +44,21 @@ const ProductList = (props) => {
       const apiUrl = context.apiUrl;
       
       // Build query parameters
+      const priceCurrency = props.scoped?.currency || 'EUR';
       const queryArgs = {
         staged: false,
         limit: 500, // Fetch many variants to ensure we get ~100 unique products after grouping
-        priceCurrency: props.scoped?.currency || 'EUR',
+        priceCurrency: priceCurrency,
       };
 
       if (searchStr) {
         queryArgs.where = `name.en="${searchStr}"`;
       }
 
-      if (props.scoped?.country) {
+      // USD prices require country=US, so automatically set it for USD currency
+      if (priceCurrency === 'USD') {
+        queryArgs.priceCountry = props.scoped?.country || 'US';
+      } else if (props.scoped?.country) {
         queryArgs.priceCountry = props.scoped.country;
       }
 

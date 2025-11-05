@@ -88,7 +88,19 @@ function CurrencyPicker() {
   return (
     <div>
       Currency:&nbsp;&nbsp;  
-      <select value={currency} onChange={onChangeCurrency}>
+      <select 
+        value={currency} 
+        onChange={onChangeCurrency}
+        style={{ 
+          padding: '5px 10px', 
+          fontSize: '14px', 
+          minWidth: '150px',
+          backgroundColor: '#fff',
+          color: '#333',
+          border: '1px solid #ccc',
+          borderRadius: '4px'
+        }}
+      >
         <option value="">(none selected)</option>
         {currencyOptions}
       </select>
