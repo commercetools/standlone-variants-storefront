@@ -25,6 +25,8 @@ const ProductDetailPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const variantsPerPage = 10;
   const navigate = useNavigate();
+  const [apiCallInfo, setApiCallInfo] = useState(null);
+  const [showApiInfo, setShowApiInfo] = useState(false);
 
   const getAccessToken = useCallback(async () => {
     const authUrl = context.authUrl || process.env.REACT_APP_AUTH_URL;
@@ -127,6 +129,21 @@ const ProductDetailPage = () => {
       }
 
       const data = await response.json();
+      
+      // Store API call information for display
+      setApiCallInfo({
+        endpoint: `/in-store/key=${storeKey}/standalone-variant-projections`,
+        method: 'GET',
+        fullUrl: url,
+        queryParams: queryParams,
+        status: response.status,
+        totalVariants: data.total || 0,
+        variantsReturned: data.results?.length || 0,
+        headers: {
+          'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
+          'Content-Type': 'application/json'
+        }
+      });
 
       if (data?.results?.length > 0) {
         // Find the requested variant or use the first one
@@ -284,6 +301,7 @@ const ProductDetailPage = () => {
     }
   };
 
+
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
       {/* Context Dropdowns at Top */}
@@ -306,6 +324,119 @@ const ProductDetailPage = () => {
       </div>
 
       {error && <h5 style={{ color: 'red' }}>{error}</h5>}
+
+      {/* API Info Card */}
+      {apiCallInfo && (
+        <div style={{ 
+          marginBottom: '30px', 
+          padding: '20px', 
+          border: '2px solid #007bff', 
+          borderRadius: '8px', 
+          backgroundColor: '#f0f8ff',
+          boxShadow: '0 2px 8px rgba(0,123,255,0.15)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0, color: '#007bff', fontSize: '18px', fontWeight: 'bold' }}>
+              📡 API Call Information
+            </h3>
+            <button
+              onClick={() => setShowApiInfo(!showApiInfo)}
+              style={{
+                padding: '5px 10px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              {showApiInfo ? '▼ Hide' : '▶ Show'}
+            </button>
+          </div>
+          
+          {showApiInfo && (
+            <div style={{ fontSize: '14px', color: '#333' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#007bff' }}>Endpoint:</strong>
+                <code style={{ 
+                  display: 'block', 
+                  marginTop: '5px', 
+                  padding: '8px', 
+                  backgroundColor: '#fff', 
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '13px',
+                  wordBreak: 'break-all'
+                }}>
+                  {apiCallInfo.method} {apiCallInfo.endpoint}
+                </code>
+              </div>
+              
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#007bff' }}>Full URL:</strong>
+                <code style={{ 
+                  display: 'block', 
+                  marginTop: '5px', 
+                  padding: '8px', 
+                  backgroundColor: '#fff', 
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  wordBreak: 'break-all',
+                  maxHeight: '100px',
+                  overflow: 'auto'
+                }}>
+                  {apiCallInfo.fullUrl}
+                </code>
+              </div>
+              
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#007bff' }}>Query Parameters:</strong>
+                <div style={{ 
+                  marginTop: '5px', 
+                  padding: '8px', 
+                  backgroundColor: '#fff', 
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
+                }}>
+                  {apiCallInfo.queryParams.map((param, idx) => {
+                    const [key, value] = param.split('=');
+                    return (
+                      <div key={idx} style={{ marginBottom: '4px' }}>
+                        <span style={{ color: '#28a745', fontWeight: 'bold' }}>{decodeURIComponent(key)}</span>
+                        <span style={{ color: '#666' }}> = </span>
+                        <span style={{ color: '#dc3545' }}>{decodeURIComponent(value || '')}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <strong style={{ color: '#007bff' }}>Status:</strong>
+                  <span style={{ marginLeft: '5px', color: apiCallInfo.status === 200 ? '#28a745' : '#dc3545' }}>
+                    {apiCallInfo.status}
+                  </span>
+                </div>
+                <div>
+                  <strong style={{ color: '#007bff' }}>Total Variants:</strong>
+                  <span style={{ marginLeft: '5px' }}>{apiCallInfo.totalVariants}</span>
+                </div>
+                <div>
+                  <strong style={{ color: '#007bff' }}>Variants Returned:</strong>
+                  <span style={{ marginLeft: '5px' }}>{apiCallInfo.variantsReturned}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Product Information Section */}
       <div style={{ 

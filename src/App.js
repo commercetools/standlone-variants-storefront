@@ -1,5 +1,5 @@
 import './App.css';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import HomePage from './components/home/home-page';
 import ProductDetailPage from './components/product-detail/product-detail-page';
 import CartPage from './components/cart/cart-page';
@@ -7,8 +7,10 @@ import OrderPage from './components/order/order-page';
 import AccountPage from './components/user/account-page';
 import ContextPage from './components/context/context-page';
 import DiscountDetailPage from "./components/discount/discount-detail-page";
+import SideCart from './components/cart/side-cart';
 import AppContext from './appContext.js';
 import oktaConfig from './okta-config';
+import { getCart } from './util/cart-util';
 import {
   BrowserRouter,
   Routes,
@@ -39,6 +41,30 @@ function App() {
     authUrl: sessionStorage.getItem('authUrl') || process.env.REACT_APP_AUTH_URL || '',
     apiUrl: sessionStorage.getItem('apiUrl') || process.env.REACT_APP_API_URL || '',
   });
+
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [cartItemCount, setCartItemCount] = useState(0);
+
+  // Update cart item count periodically
+  useEffect(() => {
+    const updateCartCount = async () => {
+      try {
+        const cart = await getCart();
+        if (cart && cart.lineItems) {
+          const totalItems = cart.lineItems.reduce((sum, item) => sum + item.quantity, 0);
+          setCartItemCount(totalItems);
+        } else {
+          setCartItemCount(0);
+        }
+      } catch (error) {
+        setCartItemCount(0);
+      }
+    };
+
+    updateCartCount();
+    const interval = setInterval(updateCartCount, 2000); // Update every 2 seconds
+    return () => clearInterval(interval);
+  }, []);
   
   return(
     <AppContext.Provider value={[context, setContext]}>
@@ -81,6 +107,9 @@ function App() {
               <Route path="/order" element={<OrderPage />}/>                
               <Route path="/" element={<HomePage />}/>
             </Routes>
+            
+            {/* Side Cart */}
+            <SideCart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
           </div>
       </BrowserRouter>
     </AppContext.Provider>
