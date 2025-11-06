@@ -21,12 +21,19 @@ const ProductDetailPage = () => {
   const [product, setProduct] = useState(null);
   const [otherVariants, setOtherVariants] = useState([]);
   const [allVariants, setAllVariants] = useState([]); // All variants including selected one
+  const [productType, setProductType] = useState(null); // Product type for dropdowns
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const variantsPerPage = 10;
   const navigate = useNavigate();
-  const [apiCallInfo, setApiCallInfo] = useState(null);
+  const [apiCallInfo, setApiCallInfo] = useState(null); // For other variants query
   const [showApiInfo, setShowApiInfo] = useState(false);
+  const [variantByIdApiInfo, setVariantByIdApiInfo] = useState(null); // For main variant by ID
+  const [showVariantByIdApiInfo, setShowVariantByIdApiInfo] = useState(false);
+  const [productTypeApiInfo, setProductTypeApiInfo] = useState(null); // For product type
+  const [showProductTypeApiInfo, setShowProductTypeApiInfo] = useState(false);
+  const [queryByAttributesApiInfo, setQueryByAttributesApiInfo] = useState(null); // For query by attributes
+  const [showQueryByAttributesApiInfo, setShowQueryByAttributesApiInfo] = useState(false);
 
   const getAccessToken = useCallback(async () => {
     const authUrl = context.authUrl || process.env.REACT_APP_AUTH_URL;
@@ -62,6 +69,188 @@ const ProductDetailPage = () => {
     });
   }, []);
 
+  // Fetch variant by ID using in-store endpoint
+  const fetchVariantById = useCallback(async (variantId) => {
+    if (!variantId) {
+      throw new Error('Variant ID is required');
+    }
+
+    const currentContext = context;
+    if (!currentContext.projectKey || !currentContext.apiUrl) {
+      throw new Error('Missing project configuration. Please configure on the home page.');
+    }
+
+    const projectKey = currentContext.projectKey;
+    const apiUrl = currentContext.apiUrl;
+    const storeKey = currentContext.storeKey || 'default';
+    const priceCurrency = currentContext.currency || 'EUR';
+
+    // Build query parameters for price selection
+    const queryParams = [];
+    queryParams.push('staged=false');
+    queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
+
+    if (priceCurrency === 'USD') {
+      queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
+    } else if (currentContext.country) {
+      queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country)}`);
+    }
+    if (currentContext.channelId) {
+      queryParams.push(`priceChannel=${encodeURIComponent(currentContext.channelId)}`);
+    }
+    if (currentContext.customerGroupId) {
+      queryParams.push(`priceCustomerGroup=${encodeURIComponent(currentContext.customerGroupId)}`);
+    }
+
+    const url = `${apiUrl}/${projectKey}/in-store/key=${storeKey}/standalone-variant-projections/${variantId}${queryParams.length > 0 ? '?' + queryParams.join('&') : ''}`;
+
+    const accessToken = await getAccessToken();
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Store API call information
+    setVariantByIdApiInfo({
+      endpoint: `/in-store/key=${storeKey}/standalone-variant-projections/${variantId}`,
+      method: 'GET',
+      fullUrl: url,
+      queryParams: queryParams,
+      status: response.status,
+      headers: {
+        'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch variant: ${response.status} - ${errorText}`);
+    }
+
+    return await response.json();
+  }, [context, getAccessToken]);
+
+  // Fetch product type by key (hardcoded as "main" for now)
+  const fetchProductType = useCallback(async (productTypeKey = 'main') => {
+    const currentContext = context;
+    if (!currentContext.projectKey || !currentContext.apiUrl) {
+      throw new Error('Missing project configuration. Please configure on the home page.');
+    }
+
+    const projectKey = currentContext.projectKey;
+    const apiUrl = currentContext.apiUrl;
+    const url = `${apiUrl}/${projectKey}/product-types/key=${productTypeKey}`;
+
+    const accessToken = await getAccessToken();
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Store API call information
+    setProductTypeApiInfo({
+      endpoint: `/product-types/key=${productTypeKey}`,
+      method: 'GET',
+      fullUrl: url,
+      queryParams: [],
+      status: response.status,
+      headers: {
+        'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch product type: ${response.status} - ${errorText}`);
+    }
+
+    return await response.json();
+  }, [context, getAccessToken]);
+
+  // Fetch other variants (for tiles display)
+  const fetchOtherVariants = useCallback(async (productId, excludeVariantId) => {
+    const currentContext = context;
+    if (!currentContext.projectKey || !currentContext.apiUrl) {
+      throw new Error('Missing project configuration. Please configure on the home page.');
+    }
+
+    const projectKey = currentContext.projectKey;
+    const apiUrl = currentContext.apiUrl;
+    const storeKey = currentContext.storeKey || 'default';
+    const whereClause = encodeURIComponent(`product(id="${productId}")`);
+    const priceCurrency = currentContext.currency || 'EUR';
+
+    // Build query parameters for price selection
+    const queryParams = [];
+    queryParams.push(`where=${whereClause}`);
+    queryParams.push('staged=false');
+    queryParams.push('limit=500');
+    queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
+
+    // Add optional price selection parameters
+    if (priceCurrency === 'USD') {
+      queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
+    } else if (currentContext.country) {
+      queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country)}`);
+    }
+    if (currentContext.channelId) {
+      queryParams.push(`priceChannel=${encodeURIComponent(currentContext.channelId)}`);
+    }
+    if (currentContext.customerGroupId) {
+      queryParams.push(`priceCustomerGroup=${encodeURIComponent(currentContext.customerGroupId)}`);
+    }
+
+    // Use in-store endpoint: /in-store/key={storeKey}/standalone-variant-projections
+    const url = `${apiUrl}/${projectKey}/in-store/key=${storeKey}/standalone-variant-projections?${queryParams.join('&')}`;
+
+    const accessToken = await getAccessToken();
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    // Store API call information for display
+    setApiCallInfo({
+      endpoint: `/in-store/key=${storeKey}/standalone-variant-projections`,
+      method: 'GET',
+      fullUrl: url,
+      queryParams: queryParams,
+      status: response.status,
+      totalVariants: data.total || 0,
+      variantsReturned: data.results?.length || 0,
+      headers: {
+        'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Filter out the excluded variant
+    if (excludeVariantId && data?.results) {
+      const excludeIdStr = excludeVariantId.toString();
+      data.results = data.results.filter(v => {
+        const vid = v.id?.variantId || v.id;
+        return vid !== excludeIdStr && String(vid) !== excludeIdStr;
+      });
+    }
+
+    return data.results || [];
+  }, [context, getAccessToken]);
+
   const fetchProduct = useCallback(async (productId, requestedVariantId) => {
     if (!productId || productId === 'undefined') {
       return;
@@ -69,119 +258,42 @@ const ProductDetailPage = () => {
 
     // Get fresh context values for this fetch
     const currentContext = context;
-    
+
     if (!currentContext.projectKey || !currentContext.apiUrl) {
       setError('Missing project configuration. Please configure on the home page.');
       return;
     }
 
+    // Variant ID is required - if not provided, we can't proceed
+    if (!requestedVariantId) {
+      setError('Variant ID is required. Please provide a variant ID in the URL.');
+      return;
+    }
+
     try {
       setError(null); // Clear any previous errors
-      
-      const projectKey = currentContext.projectKey;
-      const apiUrl = currentContext.apiUrl;
-    const queryArgs = setQueryArgs();
 
-      // Use in-store variant projections endpoint
-      // Default to 'default' store if no store is selected
-      const storeKey = currentContext.storeKey || 'default';
-      const whereClause = encodeURIComponent(`product(id="${productId}")`);
-      const priceCurrency = currentContext.currency || queryArgs.priceCurrency || 'EUR';
-      
-      // Build query parameters for price selection
-      const queryParams = [];
-      queryParams.push(`where=${whereClause}`);
-      queryParams.push('staged=false');
-      queryParams.push('limit=500');
-      queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
-      
-      // Add optional price selection parameters
-      // USD prices require country=US, so automatically set it for USD currency
-      if (priceCurrency === 'USD') {
-        // For USD, use explicitly selected country or default to US
-        queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
-      } else if (currentContext.country) {
-        // For other currencies, use selected country if available
-        queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country)}`);
-      }
-      if (currentContext.channelId) {
-        queryParams.push(`priceChannel=${encodeURIComponent(currentContext.channelId)}`);
-      }
-      if (currentContext.customerGroupId) {
-        queryParams.push(`priceCustomerGroup=${encodeURIComponent(currentContext.customerGroupId)}`);
-      }
-      
-      // Use in-store endpoint: /in-store/key={storeKey}/standalone-variant-projections
-      const url = `${apiUrl}/${projectKey}/in-store/key=${storeKey}/standalone-variant-projections?${queryParams.join('&')}`;
+      // Step 1: Fetch the main variant by ID
+      const selectedVariant = await fetchVariantById(requestedVariantId);
+      setProduct(selectedVariant);
 
-      const accessToken = await getAccessToken();
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Step 2: Fetch product type (hardcoded as "main" for now)
+      const productTypeData = await fetchProductType('main');
+      setProductType(productTypeData);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        setError(`API Error: ${response.status} - ${errorText}`);
-        return;
-      }
+      // Step 3: Fetch other variants for tiles display
+      const otherVariantsList = await fetchOtherVariants(productId, requestedVariantId);
+      setOtherVariants(otherVariantsList);
 
-      const data = await response.json();
-      
-      // Store API call information for display
-      setApiCallInfo({
-        endpoint: `/in-store/key=${storeKey}/standalone-variant-projections`,
-        method: 'GET',
-        fullUrl: url,
-        queryParams: queryParams,
-        status: response.status,
-        totalVariants: data.total || 0,
-        variantsReturned: data.results?.length || 0,
-        headers: {
-          'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Store all variants (including selected) for attribute selector matching
+      setAllVariants([selectedVariant, ...otherVariantsList]);
+      setCurrentPage(1); // Reset to first page when product changes
 
-      if (data?.results?.length > 0) {
-        // Find the requested variant or use the first one
-        let selectedVariant = data.results[0];
-
-        if (requestedVariantId) {
-          const requested = findVariantById(data.results, requestedVariantId);
-          if (requested) {
-            selectedVariant = requested;
-          }
-        }
-
-        // Get all other variants (excluding the selected one, no limit - will paginate later)
-        const selectedId = selectedVariant.id?.variantId || selectedVariant.id;
-        const others = data.results.filter(v => {
-          const vid = v.id?.variantId || v.id;
-          return vid !== selectedId;
-        });
-
-        setProduct(selectedVariant);
-        setOtherVariants(others);
-        setAllVariants(data.results); // Store all variants for attribute selector
-        setCurrentPage(1); // Reset to first page when product changes
-
-        // Update URL with variant ID if not present (always have a variant in URL)
-        if (!requestedVariantId && selectedId) {
-          const newParams = new URLSearchParams(searchParams);
-          newParams.set('variant', selectedId);
-          navigate(`/product-detail/${productId}?${newParams.toString()}`, { replace: true });
-        }
-      } else {
-        setError(`No standalone variants found for product ID: ${productId}`);
-      }
     } catch (error) {
       console.error('Error fetching product:', error);
       setError(error.message);
     }
-  }, [context, getAccessToken, findVariantById, searchParams, navigate]);
+  }, [context, fetchVariantById, fetchProductType, fetchOtherVariants]);
 
   useEffect(() => {
     // Sync context from sessionStorage to display current values
@@ -248,18 +360,18 @@ const ProductDetailPage = () => {
   const sortedVariants = [...otherVariants].sort((a, b) => {
     const sizeA = getAttributeValue(a, 'size');
     const sizeB = getAttributeValue(b, 'size');
-    
+
     if (!sizeA && !sizeB) return 0;
     if (!sizeA) return 1;
     if (!sizeB) return -1;
-    
+
     // Try to sort numerically if both are numbers
     const numA = parseFloat(sizeA);
     const numB = parseFloat(sizeB);
     if (!isNaN(numA) && !isNaN(numB)) {
       return numA - numB;
     }
-    
+
     // Otherwise sort alphabetically
     return sizeA.localeCompare(sizeB);
   });
@@ -270,12 +382,9 @@ const ProductDetailPage = () => {
   const endIndex = startIndex + variantsPerPage;
   const paginatedVariants = sortedVariants.slice(startIndex, endIndex);
 
-  if (!product) {
-    return <div>No product selected</div>;
-  }
-
-  const productName = getLocalizedText(product.name, 'Unknown');
-  const productDescription = getLocalizedText(product.description, '');
+  // Get product name and description from product if available, otherwise use first variant or empty
+  const productName = product ? getLocalizedText(product.name, 'Unknown') : (allVariants.length > 0 ? getLocalizedText(allVariants[0]?.name, 'Unknown') : 'Unknown');
+  const productDescription = product ? getLocalizedText(product.description, '') : (allVariants.length > 0 ? getLocalizedText(allVariants[0]?.description, '') : '');
 
   const variantTileStyle = {
     border: '2px solid #e0e0e0',
@@ -305,11 +414,11 @@ const ProductDetailPage = () => {
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
       {/* Context Dropdowns at Top */}
-      <div style={{ 
-        marginBottom: '30px', 
-        padding: '20px', 
-        border: '1px solid #ddd', 
-        borderRadius: '8px', 
+      <div style={{
+        marginBottom: '30px',
+        padding: '20px',
+        border: '1px solid #ddd',
+        borderRadius: '8px',
         backgroundColor: '#f9f9f9',
         boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
       }}>
@@ -325,124 +434,11 @@ const ProductDetailPage = () => {
 
       {error && <h5 style={{ color: 'red' }}>{error}</h5>}
 
-      {/* API Info Card */}
-      {apiCallInfo && (
-        <div style={{ 
-          marginBottom: '30px', 
-          padding: '20px', 
-          border: '2px solid #007bff', 
-          borderRadius: '8px', 
-          backgroundColor: '#f0f8ff',
-          boxShadow: '0 2px 8px rgba(0,123,255,0.15)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0, color: '#007bff', fontSize: '18px', fontWeight: 'bold' }}>
-              📡 API Call Information
-            </h3>
-            <button
-              onClick={() => setShowApiInfo(!showApiInfo)}
-              style={{
-                padding: '5px 10px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              {showApiInfo ? '▼ Hide' : '▶ Show'}
-            </button>
-          </div>
-          
-          {showApiInfo && (
-            <div style={{ fontSize: '14px', color: '#333' }}>
-              <div style={{ marginBottom: '12px' }}>
-                <strong style={{ color: '#007bff' }}>Endpoint:</strong>
-                <code style={{ 
-                  display: 'block', 
-                  marginTop: '5px', 
-                  padding: '8px', 
-                  backgroundColor: '#fff', 
-                  borderRadius: '4px',
-                  border: '1px solid #ddd',
-                  fontFamily: 'monospace',
-                  fontSize: '13px',
-                  wordBreak: 'break-all'
-                }}>
-                  {apiCallInfo.method} {apiCallInfo.endpoint}
-                </code>
-              </div>
-              
-              <div style={{ marginBottom: '12px' }}>
-                <strong style={{ color: '#007bff' }}>Full URL:</strong>
-                <code style={{ 
-                  display: 'block', 
-                  marginTop: '5px', 
-                  padding: '8px', 
-                  backgroundColor: '#fff', 
-                  borderRadius: '4px',
-                  border: '1px solid #ddd',
-                  fontFamily: 'monospace',
-                  fontSize: '12px',
-                  wordBreak: 'break-all',
-                  maxHeight: '100px',
-                  overflow: 'auto'
-                }}>
-                  {apiCallInfo.fullUrl}
-                </code>
-              </div>
-              
-              <div style={{ marginBottom: '12px' }}>
-                <strong style={{ color: '#007bff' }}>Query Parameters:</strong>
-                <div style={{ 
-                  marginTop: '5px', 
-                  padding: '8px', 
-                  backgroundColor: '#fff', 
-                  borderRadius: '4px',
-                  border: '1px solid #ddd',
-                  fontFamily: 'monospace',
-                  fontSize: '12px'
-                }}>
-                  {apiCallInfo.queryParams.map((param, idx) => {
-                    const [key, value] = param.split('=');
-                    return (
-                      <div key={idx} style={{ marginBottom: '4px' }}>
-                        <span style={{ color: '#28a745', fontWeight: 'bold' }}>{decodeURIComponent(key)}</span>
-                        <span style={{ color: '#666' }}> = </span>
-                        <span style={{ color: '#dc3545' }}>{decodeURIComponent(value || '')}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              
-              <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                <div>
-                  <strong style={{ color: '#007bff' }}>Status:</strong>
-                  <span style={{ marginLeft: '5px', color: apiCallInfo.status === 200 ? '#28a745' : '#dc3545' }}>
-                    {apiCallInfo.status}
-                  </span>
-                </div>
-                <div>
-                  <strong style={{ color: '#007bff' }}>Total Variants:</strong>
-                  <span style={{ marginLeft: '5px' }}>{apiCallInfo.totalVariants}</span>
-                </div>
-                <div>
-                  <strong style={{ color: '#007bff' }}>Variants Returned:</strong>
-                  <span style={{ marginLeft: '5px' }}>{apiCallInfo.variantsReturned}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Product Information Section */}
-      <div style={{ 
-        marginBottom: '30px', 
-        padding: '25px', 
-        border: '1px solid #ddd', 
+      <div style={{
+        marginBottom: '30px',
+        padding: '25px',
+        border: '1px solid #ddd',
         borderRadius: '8px',
         backgroundColor: '#fff',
         boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
@@ -458,108 +454,625 @@ const ProductDetailPage = () => {
       </div>
 
       {/* Attribute Selector */}
-      {allVariants.length > 0 && (
-        <AttributeSelector
-          variants={allVariants}
-          selectedVariant={product}
-          onVariantChange={handleVariantChange}
-        />
+      {productType && allVariants.length > 0 && (
+        <div>
+          {/* Product Type API Info Card */}
+          {productTypeApiInfo && (
+            <div style={{
+              marginBottom: '20px',
+              padding: '15px',
+              border: '2px solid #28a745',
+              borderRadius: '8px',
+              backgroundColor: '#f0fff4',
+              boxShadow: '0 2px 8px rgba(40,167,69,0.15)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#28a745', fontSize: '16px', fontWeight: 'bold' }}>
+                  📋 Product Type API Call
+                </h4>
+                <button
+                  onClick={() => setShowProductTypeApiInfo(!showProductTypeApiInfo)}
+                  style={{
+                    padding: '5px 10px',
+                    backgroundColor: '#28a745',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px'
+                  }}
+                >
+                  {showProductTypeApiInfo ? '▼ Hide' : '▶ Show'}
+                </button>
+              </div>
+
+              {showProductTypeApiInfo && (
+                <div style={{ fontSize: '13px', color: '#333' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong style={{ color: '#28a745' }}>Endpoint:</strong>
+                    <code style={{
+                      display: 'block',
+                      marginTop: '3px',
+                      padding: '6px',
+                      backgroundColor: '#fff',
+                      borderRadius: '4px',
+                      border: '1px solid #ddd',
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      wordBreak: 'break-all'
+                    }}>
+                      {productTypeApiInfo.method} {productTypeApiInfo.endpoint}
+                    </code>
+                  </div>
+
+
+                  <div>
+                    <strong style={{ color: '#28a745' }}>Status:</strong>
+                    <span style={{ marginLeft: '5px', color: productTypeApiInfo.status === 200 ? '#28a745' : '#dc3545' }}>
+                      {productTypeApiInfo.status}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <AttributeSelector
+            productType={productType}
+            variants={allVariants}
+            selectedVariant={product}
+            onVariantChange={handleVariantChange}
+            onFetchVariantById={async (variantId, productId) => {
+              try {
+                // Fetch the variant by ID immediately
+                const selectedVariant = await fetchVariantById(variantId);
+                setProduct(selectedVariant);
+
+                // Refetch other variants to update the list
+                const otherVariantsList = await fetchOtherVariants(productId, variantId);
+                setOtherVariants(otherVariantsList);
+                setAllVariants([selectedVariant, ...otherVariantsList]);
+                setCurrentPage(1);
+              } catch (error) {
+                console.error('Error fetching variant by ID:', error);
+                setError(error.message);
+              }
+            }}
+            onQueryVariantByAttributes={async (size, color, style) => {
+              try {
+                // Use productId from product if available, otherwise from URL params or allVariants
+                const productId = product?.product?.id || id || (allVariants.length > 0 ? allVariants[0]?.product?.id : null);
+                if (!productId) {
+                  setError('Product ID not available');
+                  return;
+                }
+
+                // Build a query to find variants matching the attribute combination
+                const currentContext = context;
+                const projectKey = currentContext.projectKey;
+                const apiUrl = currentContext.apiUrl;
+                const storeKey = currentContext.storeKey || 'default';
+                const priceCurrency = currentContext.currency || 'EUR';
+
+                // Build where clause with attribute filters
+                // For standalone variant projections, attributes are at the top level
+                // Format: attributes(name="..." and value="...") and attributes(name="..." and value(key="..."))
+                const whereConditions = [];
+
+                // Always include product filter
+                whereConditions.push(`product(id="${productId}")`);
+
+                // Add attribute conditions - each attribute is a separate attributes() predicate
+                // Only add attribute conditions if they have non-empty values
+                if (size && size.trim() !== '') {
+                  // Size is text type - use value directly
+                  whereConditions.push(`attributes(name="size" and value="${size}")`);
+                }
+                if (color && color.trim() !== '') {
+                  // Color is lenum type - but in standalone variant projections, enum values are stored as plain strings
+                  // Use value="..." directly (not value(key="..."))
+                  whereConditions.push(`attributes(name="color" and value="${color}")`);
+                }
+                if (style && style.trim() !== '') {
+                  // Style is enum type - but in standalone variant projections, enum values are stored as plain strings
+                  // Use value="..." directly (not value(key="..."))
+                  whereConditions.push(`attributes(name="style" and value="${style}")`);
+                }
+
+                const whereClause = whereConditions.join(' and ');
+
+                // Debug logging
+                console.log('Query by attributes:', { size, color, style, productId, whereClause });
+
+                // Build query parameters
+                const queryParams = [];
+                queryParams.push(`where=${encodeURIComponent(whereClause)}`);
+                queryParams.push('staged=false');
+                queryParams.push('limit=1'); // Just need one match
+                queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
+
+                if (priceCurrency === 'USD') {
+                  queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
+                } else if (currentContext.country) {
+                  queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country)}`);
+                }
+                if (currentContext.channelId) {
+                  queryParams.push(`priceChannel=${encodeURIComponent(currentContext.channelId)}`);
+                }
+                if (currentContext.customerGroupId) {
+                  queryParams.push(`priceCustomerGroup=${encodeURIComponent(currentContext.customerGroupId)}`);
+                }
+
+                const url = `${apiUrl}/${projectKey}/in-store/key=${storeKey}/standalone-variant-projections?${queryParams.join('&')}`;
+
+                const accessToken = await getAccessToken();
+                const response = await fetch(url, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+
+                // Clear the by ID API info since we're querying by attributes instead
+                setVariantByIdApiInfo(null);
+
+                // Store API call information for query by attributes
+                const responseClone = response.clone();
+                const dataForInfo = await responseClone.json().catch(() => ({}));
+                setQueryByAttributesApiInfo({
+                  endpoint: `/in-store/key=${storeKey}/standalone-variant-projections`,
+                  method: 'GET',
+                  fullUrl: url,
+                  queryParams: queryParams,
+                  status: response.status,
+                  totalVariants: dataForInfo.total || 0,
+                  variantsReturned: dataForInfo.results?.length || 0,
+                  headers: {
+                    'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+
+                if (response.ok) {
+                  const data = await response.json();
+                  console.log('Query response:', {
+                    total: data?.total,
+                    resultsCount: data?.results?.length,
+                    results: data?.results?.map(r => ({
+                      id: r.id?.variantId || r.id,
+                      sku: r.sku,
+                      attributes: r.attributes?.map(a => ({ name: a.name, value: a.value }))
+                    }))
+                  });
+
+                  if (data?.results?.length > 0) {
+                    // Found a match! Use the variant data directly from the query result
+                    const foundVariant = data.results[0];
+                    const variantId = foundVariant.id?.variantId || foundVariant.id;
+                    const foundProductId = foundVariant.product?.id;
+
+                    console.log('Found variant:', { variantId, foundProductId, variant: foundVariant });
+
+                    if (variantId && foundProductId) {
+                      // Update URL
+                      const newParams = new URLSearchParams(searchParams);
+                      newParams.set('variant', variantId);
+                      navigate(`/product-detail/${foundProductId}?${newParams.toString()}`, { replace: true });
+
+                      // Use the variant data directly from the query - no need to fetch by ID again!
+                      setProduct(foundVariant);
+
+                      // Refetch other variants
+                      const otherVariantsList = await fetchOtherVariants(foundProductId, variantId);
+                      setOtherVariants(otherVariantsList);
+                      setAllVariants([foundVariant, ...otherVariantsList]);
+                      setCurrentPage(1);
+                      setError(null); // Clear any previous errors
+                    } else {
+                      console.error('Variant found but missing ID or product ID:', foundVariant);
+                      setError('Variant found but missing required IDs');
+                    }
+                  } else {
+                    // No variant found - clear only the main product variant but keep other sections
+                    console.log('No variants found in query response');
+                    setProduct(null);
+                    // Keep otherVariants and allVariants for display
+                    // setOtherVariants([]);
+                    // setAllVariants([]);
+                    setError(`Variant does not exist for this combination in the current store`);
+                  }
+                } else {
+                  const errorText = await response.text();
+                  // Clear product state on API error too
+                  setProduct(null);
+                  setOtherVariants([]);
+                  setAllVariants([]);
+                  setError(`Failed to query variants: ${response.status} - ${errorText}`);
+                }
+              } catch (error) {
+                console.error('Error querying variant by attributes:', error);
+                setError(error.message);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Main Variant by ID API Info Card */}
+      {variantByIdApiInfo && (
+        <div style={{
+          marginBottom: '30px',
+          padding: '20px',
+          border: '2px solid #ff9800',
+          borderRadius: '8px',
+          backgroundColor: '#fff8e1',
+          boxShadow: '0 2px 8px rgba(255,152,0,0.15)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0, color: '#ff9800', fontSize: '18px', fontWeight: 'bold' }}>
+              🎯 Main Variant by ID API Call
+            </h3>
+            <button
+              onClick={() => setShowVariantByIdApiInfo(!showVariantByIdApiInfo)}
+              style={{
+                padding: '5px 10px',
+                backgroundColor: '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              {showVariantByIdApiInfo ? '▼ Hide' : '▶ Show'}
+            </button>
+          </div>
+
+          {showVariantByIdApiInfo && (
+            <div style={{ fontSize: '14px', color: '#333' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#ff9800' }}>Endpoint:</strong>
+                <code style={{
+                  display: 'block',
+                  marginTop: '5px',
+                  padding: '8px',
+                  backgroundColor: '#fff',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '13px',
+                  wordBreak: 'break-all'
+                }}>
+                  {variantByIdApiInfo.method} {variantByIdApiInfo.endpoint}
+                </code>
+              </div>
+
+
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#ff9800' }}>Query Parameters:</strong>
+                <div style={{
+                  marginTop: '5px',
+                  padding: '8px',
+                  backgroundColor: '#fff',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
+                }}>
+                  {variantByIdApiInfo.queryParams.length > 0 ? (
+                    variantByIdApiInfo.queryParams.map((param, idx) => {
+                      const [key, value] = param.split('=');
+                      return (
+                        <div key={idx} style={{ marginBottom: '4px' }}>
+                          <span style={{ color: '#28a745', fontWeight: 'bold' }}>{decodeURIComponent(key)}</span>
+                          <span style={{ color: '#666' }}> = </span>
+                          <span style={{ color: '#dc3545' }}>{decodeURIComponent(value || '')}</span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <span style={{ color: '#666', fontStyle: 'italic' }}>None</span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#ff9800' }}>Status:</strong>
+                <span style={{ marginLeft: '5px', color: variantByIdApiInfo.status === 200 ? '#28a745' : '#dc3545' }}>
+                  {variantByIdApiInfo.status}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Query by Attributes API Info Card */}
+      {queryByAttributesApiInfo && (
+        <div style={{
+          marginBottom: '30px',
+          padding: '20px',
+          border: '2px solid #9c27b0',
+          borderRadius: '8px',
+          backgroundColor: '#f3e5f5',
+          boxShadow: '0 2px 8px rgba(156,39,176,0.15)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0, color: '#9c27b0', fontSize: '18px', fontWeight: 'bold' }}>
+              🔍 Query by Attributes API Call
+            </h3>
+            <button
+              onClick={() => setShowQueryByAttributesApiInfo(!showQueryByAttributesApiInfo)}
+              style={{
+                padding: '5px 10px',
+                backgroundColor: '#9c27b0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              {showQueryByAttributesApiInfo ? '▼ Hide' : '▶ Show'}
+            </button>
+          </div>
+
+          {showQueryByAttributesApiInfo && (
+            <div style={{ fontSize: '14px', color: '#333' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#9c27b0' }}>Endpoint:</strong>
+                <code style={{
+                  display: 'block',
+                  marginTop: '5px',
+                  padding: '8px',
+                  backgroundColor: '#fff',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '13px',
+                  wordBreak: 'break-all'
+                }}>
+                  {queryByAttributesApiInfo.method} {queryByAttributesApiInfo.endpoint}
+                </code>
+              </div>
+
+
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ color: '#9c27b0' }}>Query Parameters:</strong>
+                <div style={{
+                  marginTop: '5px',
+                  padding: '8px',
+                  backgroundColor: '#fff',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
+                }}>
+                  {queryByAttributesApiInfo.queryParams.map((param, idx) => {
+                    const [key, value] = param.split('=');
+                    return (
+                      <div key={idx} style={{ marginBottom: '4px' }}>
+                        <span style={{ color: '#28a745', fontWeight: 'bold' }}>{decodeURIComponent(key)}</span>
+                        <span style={{ color: '#666' }}> = </span>
+                        <span style={{ color: '#dc3545' }}>{decodeURIComponent(value || '')}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <strong style={{ color: '#9c27b0' }}>Status:</strong>
+                  <span style={{ marginLeft: '5px', color: queryByAttributesApiInfo.status === 200 ? '#28a745' : '#dc3545' }}>
+                    {queryByAttributesApiInfo.status}
+                  </span>
+                </div>
+                <div>
+                  <strong style={{ color: '#9c27b0' }}>Total Variants:</strong>
+                  <span style={{ marginLeft: '5px' }}>{queryByAttributesApiInfo.totalVariants}</span>
+                </div>
+                <div>
+                  <strong style={{ color: '#9c27b0' }}>Variants Returned:</strong>
+                  <span style={{ marginLeft: '5px' }}>{queryByAttributesApiInfo.variantsReturned}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Variant Information Section */}
-      <div style={{ 
-        marginBottom: '30px', 
-        padding: '25px', 
-        border: '1px solid #ddd', 
-        borderRadius: '8px',
-        backgroundColor: '#fff',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-      }}>
-        <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Variant Information</h2>
-        {product.sku && (
-          <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-            <strong style={{ color: '#555' }}>SKU:</strong> <span style={{ color: '#333' }}>{product.sku}</span>
-          </div>
-        )}
-        {product.key && (
-          <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-            <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
-          </div>
-        )}
-
-        {product.images?.length > 0 && (() => {
-          // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
-          const colorToHex = (colorName) => {
-            const colorMap = {
-              'black': '#000000',
-              'grey': '#808080',
-              'gray': '#808080', // Alias for grey
-              'beige': '#F5F5DC',
-              'white': '#FFFFFF',
-              'blue': '#0000FF',
-              'brown': '#A52A2A',
-              'turquoise': '#40E0D0',
-              'petrol': '#005F6A',
-              'green': '#008000',
-              'red': '#FF0000',
-              'purple': '#800080',
-              'pink': '#FFC0CB',
-              'orange': '#FFA500',
-              'yellow': '#FFFF00',
-              'oliv': '#808000',
-              'gold': '#FFD700',
-              'silver': '#C0C0C0',
-              'multicolored': '#FF00FF' // Magenta for multicolored
-            };
-            return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
-          };
-
-          const colorValue = getAttributeValue(product, 'color');
-          const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
-
-          return (
-            <div style={{ marginBottom: '20px' }}>
-              <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>Images:</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
-                {product.images.map((img, idx) => (
-                  <img 
-                    key={idx} 
-                    src={img.url} 
-                    alt={productName} 
-                    style={{ 
-                      maxWidth: '250px', 
-                      maxHeight: '250px',
-                      borderRadius: '8px',
-                      border: `3px solid ${borderColor}`,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                      objectFit: 'contain'
-                    }} 
-                  />
-                ))}
-              </div>
+      {product ? (
+        <div style={{
+          marginBottom: '30px',
+          padding: '25px',
+          border: '1px solid #ddd',
+          borderRadius: '8px',
+          backgroundColor: '#fff',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+        }}>
+          <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Variant Information</h2>
+          {product.sku && (
+            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+              <strong style={{ color: '#555' }}>SKU:</strong> <span style={{ color: '#333' }}>{product.sku}</span>
             </div>
-          );
-        })()}
+          )}
+          {product.key && (
+            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+              <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
+            </div>
+          )}
 
-        <VariantInfo priceMode="Standalone" variant={product} />
-      </div>
+          {product.images?.length > 0 && (() => {
+            // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
+            const colorToHex = (colorName) => {
+              const colorMap = {
+                'black': '#000000',
+                'grey': '#808080',
+                'gray': '#808080', // Alias for grey
+                'beige': '#F5F5DC',
+                'white': '#FFFFFF',
+                'blue': '#0000FF',
+                'brown': '#A52A2A',
+                'turquoise': '#40E0D0',
+                'petrol': '#005F6A',
+                'green': '#008000',
+                'red': '#FF0000',
+                'purple': '#800080',
+                'pink': '#FFC0CB',
+                'orange': '#FFA500',
+                'yellow': '#FFFF00',
+                'oliv': '#808000',
+                'gold': '#FFD700',
+                'silver': '#C0C0C0',
+                'multicolored': '#FF00FF' // Magenta for multicolored
+              };
+              return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
+            };
+
+            const colorValue = getAttributeValue(product, 'color');
+            const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
+
+            return (
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>Images:</h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                  {product.images.map((img, idx) => (
+                    <img
+                      key={idx}
+                      src={img.url}
+                      alt={productName}
+                      style={{
+                        maxWidth: '250px',
+                        maxHeight: '250px',
+                        borderRadius: '8px',
+                        border: `3px solid ${borderColor}`,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        objectFit: 'contain'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          <VariantInfo priceMode="Standalone" variant={product} />
+        </div>
+      ) : (
+        <div style={{
+          marginBottom: '30px',
+          padding: '25px',
+          border: '1px solid #ddd',
+          borderRadius: '8px',
+          backgroundColor: '#fff',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+        }}>
+          <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Variant Information</h2>
+          {error && (
+            <div style={{
+              padding: '15px',
+              backgroundColor: '#fff3cd',
+              border: '1px solid #ffc107',
+              borderRadius: '5px',
+              color: '#856404'
+            }}>
+              <strong>⚠️ </strong>{error}
+            </div>
+          )}
+        </div>
+      )}
+
 
       {otherVariants?.length > 0 && (
-        <div style={{ 
-          marginTop: '30px', 
-          padding: '25px', 
-          border: '1px solid #ddd', 
+        <div style={{
+          marginTop: '30px',
+          padding: '25px',
+          border: '1px solid #ddd',
           borderRadius: '8px',
           backgroundColor: '#fff',
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
         }}>
           <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Other Variants ({otherVariants.length})</h2>
+          {/* Other Variants Query API Info Card */}
+          {apiCallInfo && (
+            <div style={{
+              marginBottom: '20px',
+              padding: '15px',
+              border: '2px solid #007bff',
+              borderRadius: '8px',
+              backgroundColor: '#f0f8ff',
+              boxShadow: '0 2px 8px rgba(0,123,255,0.15)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#007bff', fontSize: '16px', fontWeight: 'bold' }}>
+                  📦 Other Variants Query API Call
+                </h4>
+                <button
+                  onClick={() => setShowApiInfo(!showApiInfo)}
+                  style={{
+                    padding: '5px 10px',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px'
+                  }}
+                >
+                  {showApiInfo ? '▼ Hide' : '▶ Show'}
+                </button>
+              </div>
+
+              {showApiInfo && (
+                <div style={{ fontSize: '13px', color: '#333' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong style={{ color: '#007bff' }}>Endpoint:</strong>
+                    <code style={{
+                      display: 'block',
+                      marginTop: '3px',
+                      padding: '6px',
+                      backgroundColor: '#fff',
+                      borderRadius: '4px',
+                      border: '1px solid #ddd',
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      wordBreak: 'break-all'
+                    }}>
+                      {apiCallInfo.method} {apiCallInfo.endpoint}
+                    </code>
+                  </div>
+
+
+                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                    <div>
+                      <strong style={{ color: '#007bff' }}>Status:</strong>
+                      <span style={{ marginLeft: '5px', color: apiCallInfo.status === 200 ? '#28a745' : '#dc3545' }}>
+                        {apiCallInfo.status}
+                      </span>
+                    </div>
+                    <div>
+                      <strong style={{ color: '#007bff' }}>Total:</strong>
+                      <span style={{ marginLeft: '5px' }}>{apiCallInfo.totalVariants}</span>
+                    </div>
+                    <div>
+                      <strong style={{ color: '#007bff' }}>Returned:</strong>
+                      <span style={{ marginLeft: '5px' }}>{apiCallInfo.variantsReturned}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '20px' }}>
             {paginatedVariants.map((variant, idx) => {
               const variantName = getLocalizedText(variant.name, 'Unknown');
               const variantImage = variant.images?.[0]?.url;
               const variantProductId = variant.product?.id;
               const variantIdForUrl = variant.id?.variantId || variant.id;
+              const currentVariantId = product?.id?.variantId || product?.id;
+              const isSelected = variantIdForUrl === currentVariantId || String(variantIdForUrl) === String(currentVariantId);
               const sizeValue = getAttributeValue(variant, 'size');
               const colorValue = getAttributeValue(variant, 'color');
               const styleValue = getAttributeValue(variant, 'style');
@@ -602,7 +1115,8 @@ const ProductDetailPage = () => {
                     style={{
                       ...variantTileStyle,
                       borderColor: borderColor,
-                      borderWidth: '3px'
+                      borderWidth: '3px',
+                      backgroundColor: isSelected ? '#e3f2fd' : '#fff'
                     }}
                     onMouseEnter={(e) => handleVariantTileHover(e, true)}
                     onMouseLeave={(e) => handleVariantTileHover(e, false)}
@@ -652,24 +1166,24 @@ const ProductDetailPage = () => {
               );
             })}
           </div>
-          
+
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '15px', 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '15px',
               justifyContent: 'center',
               marginTop: '20px',
               paddingTop: '20px',
               borderTop: '1px solid #eee'
             }}>
-              <button 
+              <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                style={{ 
-                  padding: '10px 20px', 
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer', 
+                style={{
+                  padding: '10px 20px',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                   opacity: currentPage === 1 ? 0.5 : 1,
                   backgroundColor: currentPage === 1 ? '#ccc' : '#007bff',
                   color: '#fff',
@@ -692,7 +1206,7 @@ const ProductDetailPage = () => {
               >
                 Previous
               </button>
-              <span style={{ 
+              <span style={{
                 padding: '0 15px',
                 fontSize: '16px',
                 fontWeight: 'bold',
@@ -700,12 +1214,12 @@ const ProductDetailPage = () => {
               }}>
                 Page {currentPage} of {totalPages}
               </span>
-              <button 
+              <button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                style={{ 
-                  padding: '10px 20px', 
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', 
+                style={{
+                  padding: '10px 20px',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
                   opacity: currentPage === totalPages ? 0.5 : 1,
                   backgroundColor: currentPage === totalPages ? '#ccc' : '#007bff',
                   color: '#fff',

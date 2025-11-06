@@ -49,38 +49,38 @@ export function initializeClients(config = {}) {
   // Create auth client
   currentAuthClient = new SdkAuth({
     host: authUrl,
-    projectKey: projectKey,
-    disableRefreshToken: false,
-    credentials: {
+  projectKey: projectKey,
+  disableRefreshToken: false,
+  credentials: {
       clientId: clientId,
       clientSecret: clientSecret,
-    },
+  },
     scopes: scopes,
   });
 
   // Create API client
-  const authMiddlewareOptions = {
+const authMiddlewareOptions = {
     host: authUrl,
-    projectKey,
-    credentials: {
+  projectKey,
+  credentials: {
       clientId: clientId,
       clientSecret: clientSecret,
-    },
+  },
     scopes: scopes,
-    fetch,
-  };
+  fetch,
+};
 
-  const httpMiddlewareOptions = {
+const httpMiddlewareOptions = {
     host: apiUrl,
-    fetch,
-  };
+  fetch,
+};
 
   const ctpClient = new ClientBuilder()
-    .withProjectKey(projectKey)
-    .withAnonymousSessionFlow(authMiddlewareOptions)
-    .withHttpMiddleware(httpMiddlewareOptions)
-    .withLoggerMiddleware()
-    .build();
+  .withProjectKey(projectKey)
+  .withAnonymousSessionFlow(authMiddlewareOptions)
+  .withHttpMiddleware(httpMiddlewareOptions)
+  .withLoggerMiddleware()
+  .build();
 
   currentApiRoot = createApiBuilderFromCtpClient(ctpClient, apiUrl).withProjectKey({ projectKey: projectKey });
 
@@ -167,11 +167,11 @@ export function setAccessToken(token) {
   };
 
   const ctpClient = new ClientBuilder()
-    .withProjectKey(projectKey)
-    .withExistingTokenFlow(`Bearer ${token}`, { force: true})
-    .withHttpMiddleware(httpMiddlewareOptions)
-    .withLoggerMiddleware()
-    .build();
+  .withProjectKey(projectKey)
+  .withExistingTokenFlow(`Bearer ${token}`, { force: true})
+  .withHttpMiddleware(httpMiddlewareOptions)
+  .withLoggerMiddleware()
+  .build();
 
   currentApiRoot = createApiBuilderFromCtpClient(ctpClient, apiUrl).withProjectKey({ projectKey: projectKey });
   updateExports();

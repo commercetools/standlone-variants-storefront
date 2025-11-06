@@ -113,7 +113,7 @@ function HomePage() {
         const decodedProjectKey = decodeURIComponent(urlProjectKey);
         const decodedClientId = decodeURIComponent(urlClientId);
         const decodedClientSecret = decodeURIComponent(urlClientSecret);
-        
+
         // Use URL params, then context, then env vars for authUrl and apiUrl
         const authUrlToUse = urlAuthUrl ? decodeURIComponent(urlAuthUrl) : (context.authUrl || process.env.REACT_APP_AUTH_URL || '');
         const apiUrlToUse = urlApiUrl ? decodeURIComponent(urlApiUrl) : (context.apiUrl || process.env.REACT_APP_API_URL || '');
