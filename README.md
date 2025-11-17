@@ -38,6 +38,8 @@ This application can be deployed to Kubernetes for team-wide access.
 1. **Build and push the Docker image:**
    ```bash
    ./k8s/deploy.sh
+   # if needed
+   kubectl rollout restart deployment/ct-react-test -n platform-prototype
    ```
    
    This script will:
