@@ -99,7 +99,7 @@ This application can be deployed to Kubernetes for team-wide access.
    ```
    
    The application will be available at:
-   **https://ct-react-test.prototype.europe-west1.gcp.commercetools.com**
+   **http://ct-react-test.prototype.europe-west1.gcp.commercetools.com**
 
 4. **View logs:**
    ```bash
