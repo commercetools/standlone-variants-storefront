@@ -89,7 +89,11 @@ export const updateCart = async(actions) => {
   return cart;
 }
 
-export const addToCart = async (productId, variantId, custom) => {
+export const addToCart = async (sku, custom) => {
+
+  if (!sku) {
+    throw new Error('SKU is required to add item to cart');
+  }
 
   const currency = sessionStorage.getItem('currency');
   const country = sessionStorage.getItem('country');
@@ -98,8 +102,7 @@ export const addToCart = async (productId, variantId, custom) => {
   const storeKey = sessionStorage.getItem('storeKey');
 
   const lineItem = {
-    productId,
-    variantId
+    sku
   };
   if(channelId) {
     lineItem.distributionChannel={
@@ -111,8 +114,10 @@ export const addToCart = async (productId, variantId, custom) => {
       typeId: 'channel'
     }
   }
-  // Add custom fields, if any
-  lineItem.custom = custom;
+  // Add custom fields, if any (only if not empty)
+  if(custom && Object.keys(custom).length > 0) {
+    lineItem.custom = custom;
+  }
   
   let cart = await getCart();
   

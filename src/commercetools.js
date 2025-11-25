@@ -16,7 +16,7 @@ const {
 } = process.env
 
 // Default scopes if not provided
-const DEFAULT_SCOPES = 'view_products view_standalone_variants view_standalone_prices view_stores view_channels view_customer_groups';
+const DEFAULT_SCOPES = 'view_products view_standalone_variants view_standalone_prices view_stores view_channels view_customer_groups manage_my_orders';
 
 // Store current clients
 let currentApiRoot = null;
