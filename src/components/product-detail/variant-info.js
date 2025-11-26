@@ -25,7 +25,13 @@ const VariantInfo = ({ priceMode, variant }) => {
   const navigate = useNavigate();
 
   const callAddToCart = async () => {
-    const productId = context.productId;
+    const sku = variant.sku;
+
+    if (!sku) {
+      alert('Cannot add to cart: SKU is missing for this variant');
+      return;
+    }
+
     let custom = {}
     if (showCustom) {
       custom = {
@@ -37,12 +43,16 @@ const VariantInfo = ({ priceMode, variant }) => {
         }
       }
     }
-    const result = await addToCart(productId, variant.id, custom);
-    if (result) {
-      console.log('redirect to cart');
-      navigate('/cart');
-    } else {
-      //window.location.reload();
+
+    try {
+      const result = await addToCart(sku, custom);
+      if (result) {
+        console.log('redirect to cart');
+        navigate('/cart');
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      alert('Failed to add to cart: ' + error.message);
     }
   }
 
