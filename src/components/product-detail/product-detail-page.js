@@ -902,7 +902,19 @@ const ProductDetailPage = () => {
               <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
             </div>
           )}
-
+          {!product.availability || !product.availability.isOnStock && (
+            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+              <strong style={{ color: '#EB1A0B' }}>Out of Stock:</strong>
+            </div>
+          )}
+          {product.availability.isOnStock && (
+            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+              <strong style={{ color: '#1bce00' }}>In Stock</strong>
+            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+              <strong style={{ color: '#555' }}>Quantity:</strong> <span style={{ color: '#333' }}>{product.availability.availableQuantity}</span>
+            </div>
+            </div>
+          )}
           {product.images?.length > 0 && (() => {
             // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
             const colorToHex = (colorName) => {
