@@ -904,7 +904,7 @@ const ProductDetailPage = () => {
           )}
           {!product.availability || !product.availability.isOnStock && (
             <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-              <strong style={{ color: '#EB1A0B' }}>Out of Stock:</strong>
+              <strong style={{ color: '#EB1A0B' }}>Out of Stock</strong>
             </div>
           )}
           {product.availability.isOnStock && (
