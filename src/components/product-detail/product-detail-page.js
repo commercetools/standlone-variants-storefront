@@ -910,9 +910,9 @@ const ProductDetailPage = () => {
           {product.availability.isOnStock && (
             <div style={{ marginBottom: '10px', fontSize: '16px' }}>
               <strong style={{ color: '#1bce00' }}>In Stock</strong>
-            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-              <strong style={{ color: '#555' }}>Quantity:</strong> <span style={{ color: '#333' }}>{product.availability.availableQuantity}</span>
-            </div>
+                <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+                  <strong style={{ color: '#555' }}>Quantity:</strong> <span style={{ color: '#333' }}>{product.availability.availableQuantity}</span>
+                </div>
             </div>
           )}
           {product.images?.length > 0 && (() => {
