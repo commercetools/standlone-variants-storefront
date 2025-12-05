@@ -902,12 +902,12 @@ const ProductDetailPage = () => {
               <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
             </div>
           )}
-          {!product.availability || !product.availability.isOnStock && (
+          {(!product.availability || !product.availability.isOnStock) && (
             <div style={{ marginBottom: '10px', fontSize: '16px' }}>
               <strong style={{ color: '#EB1A0B' }}>Out of Stock</strong>
             </div>
           )}
-          {product.availability.isOnStock && (
+          {product.availability && product.availability.isOnStock && (
             <div style={{ marginBottom: '10px', fontSize: '16px' }}>
               <strong style={{ color: '#1bce00' }}>In Stock</strong>
                 <div style={{ marginBottom: '10px', fontSize: '16px' }}>
