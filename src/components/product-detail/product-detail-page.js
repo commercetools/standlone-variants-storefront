@@ -89,6 +89,7 @@ const ProductDetailPage = () => {
     const queryParams = [];
     queryParams.push('staged=false');
     queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
+    queryParams.push('expand=price.discounted.discount');
 
     if (priceCurrency === 'USD') {
       queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
@@ -589,6 +590,7 @@ const ProductDetailPage = () => {
                 queryParams.push('staged=false');
                 queryParams.push('limit=1'); // Just need one match
                 queryParams.push(`priceCurrency=${encodeURIComponent(priceCurrency)}`);
+                queryParams.push('expand=price.discounted.discount');
 
                 if (priceCurrency === 'USD') {
                   queryParams.push(`priceCountry=${encodeURIComponent(currentContext.country || 'US')}`);
