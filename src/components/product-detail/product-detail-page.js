@@ -379,8 +379,12 @@ const ProductDetailPage = () => {
       fetchProduct(id, variantId).then(() => {
         // Restore scroll position if it was saved (variant switch)
         if (savedScrollPosition.current !== null) {
-          window.scrollTo(0, savedScrollPosition.current);
+          const targetScroll = savedScrollPosition.current;
           savedScrollPosition.current = null;
+          // Wait for React to finish rendering, then restore scroll
+          setTimeout(() => {
+            window.scrollTo({ top: targetScroll, behavior: 'instant' });
+          }, 50);
         }
       });
     }
