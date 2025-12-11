@@ -925,58 +925,93 @@ const ProductDetailPage = () => {
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
         }}>
           <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Variant Information</h2>
-          {product.sku && (
-            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-              <strong style={{ color: '#555' }}>SKU:</strong> <span style={{ color: '#333' }}>{product.sku}</span>
-            </div>
-          )}
-          {product.key && (
-            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-              <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
-            </div>
-          )}
-          {(!product.availability || !product.availability.isOnStock) && (
-            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-              <strong style={{ color: '#EB1A0B' }}>Out of Stock</strong>
-            </div>
-          )}
-          {product.availability && product.availability.isOnStock && (
-            <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-              <strong style={{ color: '#1bce00' }}>In Stock</strong>
+          <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
+            {/* Left Column: Basic info, images, price */}
+            <div style={{ flex: '1', minWidth: '300px' }}>
+              {product.sku && (
                 <div style={{ marginBottom: '10px', fontSize: '16px' }}>
-                  <strong style={{ color: '#555' }}>Quantity:</strong> <span style={{ color: '#333' }}>{product.availability.availableQuantity}</span>
+                  <strong style={{ color: '#555' }}>SKU:</strong> <span style={{ color: '#333' }}>{product.sku}</span>
                 </div>
-            </div>
-          )}
-          {product.images?.length > 0 && (() => {
-            const colorValue = getAttributeValue(product, 'color');
-            const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
+              )}
+              {product.key && (
+                <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+                  <strong style={{ color: '#555' }}>Variant Key:</strong> <span style={{ color: '#333' }}>{product.key}</span>
+                </div>
+              )}
+              {(!product.availability || !product.availability.isOnStock) && (
+                <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+                  <strong style={{ color: '#EB1A0B' }}>Out of Stock</strong>
+                </div>
+              )}
+              {product.availability && product.availability.isOnStock && (
+                <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+                  <strong style={{ color: '#1bce00' }}>In Stock</strong>
+                    <div style={{ marginBottom: '10px', fontSize: '16px' }}>
+                      <strong style={{ color: '#555' }}>Quantity:</strong> <span style={{ color: '#333' }}>{product.availability.availableQuantity}</span>
+                    </div>
+                </div>
+              )}
+              {product.images?.length > 0 && (() => {
+                const colorValue = getAttributeValue(product, 'color');
+                const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
 
-            return (
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>Images:</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
-                  {product.images.map((img, idx) => (
-                    <img
-                      key={idx}
-                      src={img.url}
-                      alt={productName}
-                      style={{
-                        maxWidth: '250px',
-                        maxHeight: '250px',
-                        borderRadius: '8px',
-                        border: `3px solid ${borderColor}`,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        objectFit: 'contain'
-                      }}
-                    />
-                  ))}
+                return (
+                  <div style={{ marginBottom: '20px' }}>
+                    <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>Images:</h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                      {product.images.map((img, idx) => (
+                        <img
+                          key={idx}
+                          src={img.url}
+                          alt={productName}
+                          style={{
+                            maxWidth: '250px',
+                            maxHeight: '250px',
+                            borderRadius: '8px',
+                            border: `3px solid ${borderColor}`,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <VariantInfo priceMode="Standalone" variant={product} showAttributes={false} />
+            </div>
+
+            {/* Right Column: Attributes */}
+            {product.attributes && product.attributes.length > 0 && (
+              <div style={{
+                flex: '1',
+                minWidth: '250px',
+                padding: '15px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '8px',
+                border: '1px solid #e9ecef'
+              }}>
+                <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>Attributes</h3>
+                <div style={{ fontSize: '14px', lineHeight: '1.8' }}>
+                  {product.attributes.map(attr => {
+                    let value = JSON.stringify(attr.value, null, '\t');
+                    if (typeof attr.value === 'object' && attr.value?.label !== undefined && typeof attr.value.label === 'object') {
+                      value = attr.value.label[config.locale] || attr.value.label['en'] || Object.values(attr.value.label)[0];
+                    } else if (typeof attr.value === 'boolean') {
+                      value = attr.value ? 'true' : 'false';
+                    }
+                    return (
+                      <div key={attr.name} style={{ marginBottom: '8px' }}>
+                        <strong style={{ color: '#555' }}>{attr.name}:</strong>{' '}
+                        <span style={{ color: '#333' }}>{value}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })()}
-
-          <VariantInfo priceMode="Standalone" variant={product} />
+            )}
+          </div>
         </div>
       ) : (
         <div style={{

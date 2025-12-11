@@ -12,7 +12,7 @@ const VERBOSE = false;
 
 
 
-const VariantInfo = ({ priceMode, variant }) => {
+const VariantInfo = ({ priceMode, variant, showAttributes = true }) => {
 
   const [context] = useContext(AppContext);
 
@@ -174,7 +174,7 @@ const VariantInfo = ({ priceMode, variant }) => {
         </div>
       }
       <p></p>
-      {variant.attributes && variant.attributes.length > 0 && (
+      {showAttributes && variant.attributes && variant.attributes.length > 0 && (
         <>
           <h4>Attributes:</h4> {variant.attributes.map(attr => <AttributeInfo key={attr.name} attr={attr} />)} <br></br>
         </>
