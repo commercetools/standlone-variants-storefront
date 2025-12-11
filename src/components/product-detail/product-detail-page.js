@@ -1,5 +1,5 @@
 import config from '../../config';
-import { useEffect, useState, useContext, useCallback } from 'react';
+import { useEffect, useState, useContext, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import VariantInfo from './variant-info';
 import AttributeSelector from './attribute-selector';
@@ -25,6 +25,9 @@ const ProductDetailPage = () => {
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const navigate = useNavigate();
+
+  // Ref to store scroll position during variant switches
+  const savedScrollPosition = useRef(null);
   const [apiCallInfo, setApiCallInfo] = useState(null); // For other variants query
   const [showApiInfo, setShowApiInfo] = useState(false);
   const [variantByIdApiInfo, setVariantByIdApiInfo] = useState(null); // For main variant by ID
@@ -373,7 +376,13 @@ const ProductDetailPage = () => {
       setAllVariants([]);
       setVariantMatrix(null);
       setError(null);
-      fetchProduct(id, variantId);
+      fetchProduct(id, variantId).then(() => {
+        // Restore scroll position if it was saved (variant switch)
+        if (savedScrollPosition.current !== null) {
+          window.scrollTo(0, savedScrollPosition.current);
+          savedScrollPosition.current = null;
+        }
+      });
     }
   }, [id, variantId, fetchProduct]);
 
@@ -1160,7 +1169,9 @@ const ProductDetailPage = () => {
           if (targetVariant) {
             const newVariantId = targetVariant.id;
             const productId = variantMatrix.productId;
-            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true, preventScrollReset: true });
+            // Save scroll position to ref - will be restored after fetch completes
+            savedScrollPosition.current = window.scrollY;
+            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
           }
         };
 
@@ -1177,7 +1188,9 @@ const ProductDetailPage = () => {
           if (targetVariant) {
             const newVariantId = targetVariant.id;
             const productId = variantMatrix.productId;
-            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true, preventScrollReset: true });
+            // Save scroll position to ref - will be restored after fetch completes
+            savedScrollPosition.current = window.scrollY;
+            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
           }
         };
 
