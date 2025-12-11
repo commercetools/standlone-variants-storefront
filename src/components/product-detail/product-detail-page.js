@@ -1160,7 +1160,7 @@ const ProductDetailPage = () => {
           if (targetVariant) {
             const newVariantId = targetVariant.id;
             const productId = variantMatrix.productId;
-            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
+            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true, preventScrollReset: true });
           }
         };
 
@@ -1177,7 +1177,7 @@ const ProductDetailPage = () => {
           if (targetVariant) {
             const newVariantId = targetVariant.id;
             const productId = variantMatrix.productId;
-            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
+            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true, preventScrollReset: true });
           }
         };
 
