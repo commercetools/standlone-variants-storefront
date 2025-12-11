@@ -24,7 +24,6 @@ const ProductDetailPage = () => {
   const [productType, setProductType] = useState(null); // Product type for dropdowns
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const variantsPerPage = 10;
   const navigate = useNavigate();
   const [apiCallInfo, setApiCallInfo] = useState(null); // For other variants query
   const [showApiInfo, setShowApiInfo] = useState(false);
@@ -34,6 +33,9 @@ const ProductDetailPage = () => {
   const [showProductTypeApiInfo, setShowProductTypeApiInfo] = useState(false);
   const [queryByAttributesApiInfo, setQueryByAttributesApiInfo] = useState(null); // For query by attributes
   const [showQueryByAttributesApiInfo, setShowQueryByAttributesApiInfo] = useState(false);
+  const [variantMatrix, setVariantMatrix] = useState(null); // For variant matrix selector
+  const [variantMatrixApiInfo, setVariantMatrixApiInfo] = useState(null); // For variant matrix API call
+  const [showVariantMatrixApiInfo, setShowVariantMatrixApiInfo] = useState(false);
 
   const getAccessToken = useCallback(async () => {
     const authUrl = context.authUrl || process.env.REACT_APP_AUTH_URL;
@@ -252,6 +254,53 @@ const ProductDetailPage = () => {
     return data.results || [];
   }, [context, getAccessToken]);
 
+  // Fetch variant matrix for color/size selector
+  const fetchVariantMatrix = useCallback(async (productId) => {
+    const currentContext = context;
+    if (!currentContext.projectKey || !currentContext.apiUrl) {
+      throw new Error('Missing project configuration. Please configure on the home page.');
+    }
+
+    const projectKey = currentContext.projectKey;
+    const apiUrl = currentContext.apiUrl;
+
+    // Build query parameters
+    const queryParams = [];
+    queryParams.push('filter[attributes]=color');
+    queryParams.push('filter[attributes]=size');
+    queryParams.push('staged=false');
+
+    const url = `${apiUrl}/${projectKey}/variant-matrix/${productId}?${queryParams.join('&')}`;
+
+    const accessToken = await getAccessToken();
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    // Store API call information for display
+    setVariantMatrixApiInfo({
+      endpoint: `/variant-matrix/${productId}`,
+      method: 'GET',
+      fullUrl: url,
+      queryParams: queryParams,
+      status: response.status,
+      headers: {
+        'Authorization': `Bearer ${accessToken.substring(0, 20)}...`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch variant matrix: ${response.status} - ${errorText}`);
+    }
+
+    return await response.json();
+  }, [context, getAccessToken]);
+
   const fetchProduct = useCallback(async (productId, requestedVariantId) => {
     if (!productId || productId === 'undefined') {
       return;
@@ -290,11 +339,15 @@ const ProductDetailPage = () => {
       setAllVariants([selectedVariant, ...otherVariantsList]);
       setCurrentPage(1); // Reset to first page when product changes
 
+      // Step 4: Fetch variant matrix for color/size selector
+      const variantMatrixData = await fetchVariantMatrix(productId);
+      setVariantMatrix(variantMatrixData);
+
     } catch (error) {
       console.error('Error fetching product:', error);
       setError(error.message);
     }
-  }, [context, fetchVariantById, fetchProductType, fetchOtherVariants]);
+  }, [context, fetchVariantById, fetchProductType, fetchOtherVariants, fetchVariantMatrix]);
 
   useEffect(() => {
     // Sync context from sessionStorage to display current values
@@ -318,6 +371,7 @@ const ProductDetailPage = () => {
       setProduct(null);
       setOtherVariants([]);
       setAllVariants([]);
+      setVariantMatrix(null);
       setError(null);
       fetchProduct(id, variantId);
     }
@@ -331,6 +385,7 @@ const ProductDetailPage = () => {
       setProduct(null);
       setOtherVariants([]);
       setAllVariants([]);
+      setVariantMatrix(null);
       setError(null);
       // Then fetch with new context
       fetchProduct(id, variantId);
@@ -357,59 +412,35 @@ const ProductDetailPage = () => {
     return attr ? String(attr.value) : null;
   };
 
-  // Sort variants by size attribute (if available)
-  const sortedVariants = [...otherVariants].sort((a, b) => {
-    const sizeA = getAttributeValue(a, 'size');
-    const sizeB = getAttributeValue(b, 'size');
-
-    if (!sizeA && !sizeB) return 0;
-    if (!sizeA) return 1;
-    if (!sizeB) return -1;
-
-    // Try to sort numerically if both are numbers
-    const numA = parseFloat(sizeA);
-    const numB = parseFloat(sizeB);
-    if (!isNaN(numA) && !isNaN(numB)) {
-      return numA - numB;
-    }
-
-    // Otherwise sort alphabetically
-    return sizeA.localeCompare(sizeB);
-  });
-
-  // Pagination logic
-  const totalPages = Math.ceil(sortedVariants.length / variantsPerPage);
-  const startIndex = (currentPage - 1) * variantsPerPage;
-  const endIndex = startIndex + variantsPerPage;
-  const paginatedVariants = sortedVariants.slice(startIndex, endIndex);
+  // Color name to hex mapping for CSS - all 18 colors from product-type.json
+  const colorToHex = (colorName) => {
+    const colorMap = {
+      'black': '#000000',
+      'grey': '#808080',
+      'gray': '#808080', // Alias for grey
+      'beige': '#F5F5DC',
+      'white': '#FFFFFF',
+      'blue': '#0000FF',
+      'brown': '#A52A2A',
+      'turquoise': '#40E0D0',
+      'petrol': '#005F6A',
+      'green': '#008000',
+      'red': '#FF0000',
+      'purple': '#800080',
+      'pink': '#FFC0CB',
+      'orange': '#FFA500',
+      'yellow': '#FFFF00',
+      'oliv': '#808000',
+      'gold': '#FFD700',
+      'silver': '#C0C0C0',
+      'multicolored': '#FF00FF' // Magenta for multicolored
+    };
+    return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
+  };
 
   // Get product name and description from product if available, otherwise use first variant or empty
   const productName = product ? getLocalizedText(product.name, 'Unknown') : (allVariants.length > 0 ? getLocalizedText(allVariants[0]?.name, 'Unknown') : 'Unknown');
   const productDescription = product ? getLocalizedText(product.description, '') : (allVariants.length > 0 ? getLocalizedText(allVariants[0]?.description, '') : '');
-
-  const variantTileStyle = {
-    border: '2px solid #e0e0e0',
-    padding: '15px',
-    borderRadius: '8px',
-    width: '200px',
-    textAlign: 'center',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    backgroundColor: '#fff',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  };
-
-  const handleVariantTileHover = (e, isEntering) => {
-    if (isEntering) {
-      e.currentTarget.style.borderColor = '#007bff';
-      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,123,255,0.2)';
-      e.currentTarget.style.transform = 'translateY(-4px)';
-    } else {
-      e.currentTarget.style.borderColor = '#e0e0e0';
-      e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-      e.currentTarget.style.transform = 'translateY(0)';
-    }
-  };
 
 
   return (
@@ -918,32 +949,6 @@ const ProductDetailPage = () => {
             </div>
           )}
           {product.images?.length > 0 && (() => {
-            // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
-            const colorToHex = (colorName) => {
-              const colorMap = {
-                'black': '#000000',
-                'grey': '#808080',
-                'gray': '#808080', // Alias for grey
-                'beige': '#F5F5DC',
-                'white': '#FFFFFF',
-                'blue': '#0000FF',
-                'brown': '#A52A2A',
-                'turquoise': '#40E0D0',
-                'petrol': '#005F6A',
-                'green': '#008000',
-                'red': '#FF0000',
-                'purple': '#800080',
-                'pink': '#FFC0CB',
-                'orange': '#FFA500',
-                'yellow': '#FFFF00',
-                'oliv': '#808000',
-                'gold': '#FFD700',
-                'silver': '#C0C0C0',
-                'multicolored': '#FF00FF' // Magenta for multicolored
-              };
-              return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
-            };
-
             const colorValue = getAttributeValue(product, 'color');
             const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
 
@@ -998,268 +1003,396 @@ const ProductDetailPage = () => {
       )}
 
 
-      {otherVariants?.length > 0 && (
-        <div style={{
-          marginTop: '30px',
-          padding: '25px',
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          backgroundColor: '#fff',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-        }}>
-          <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>Other Variants ({otherVariants.length})</h2>
-          {/* Other Variants Query API Info Card */}
-          {apiCallInfo && (
-            <div style={{
-              marginBottom: '20px',
-              padding: '15px',
-              border: '2px solid #007bff',
-              borderRadius: '8px',
-              backgroundColor: '#f0f8ff',
-              boxShadow: '0 2px 8px rgba(0,123,255,0.15)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h4 style={{ margin: 0, color: '#007bff', fontSize: '16px', fontWeight: 'bold' }}>
-                  📦 Other Variants Query API Call
-                </h4>
-                <button
-                  onClick={() => setShowApiInfo(!showApiInfo)}
-                  style={{
-                    padding: '5px 10px',
-                    backgroundColor: '#007bff',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '11px'
-                  }}
-                >
-                  {showApiInfo ? '▼ Hide' : '▶ Show'}
-                </button>
-              </div>
+      {/* Variant Matrix Selector */}
+      {variantMatrix && variantMatrix.variants?.length > 0 && (() => {
+        // Extract current color and size from selected variant
+        const getCurrentColor = () => {
+          if (!product) return null;
+          const colorAttr = product.attributes?.find(a => a.name === 'color');
+          if (!colorAttr) return null;
+          // Handle both string and object format
+          if (typeof colorAttr.value === 'string') return colorAttr.value;
+          return colorAttr.value?.key || null;
+        };
 
-              {showApiInfo && (
-                <div style={{ fontSize: '13px', color: '#333' }}>
-                  <div style={{ marginBottom: '8px' }}>
-                    <strong style={{ color: '#007bff' }}>Endpoint:</strong>
-                    <code style={{
-                      display: 'block',
-                      marginTop: '3px',
-                      padding: '6px',
-                      backgroundColor: '#fff',
-                      borderRadius: '4px',
-                      border: '1px solid #ddd',
-                      fontFamily: 'monospace',
-                      fontSize: '12px',
-                      wordBreak: 'break-all'
-                    }}>
-                      {apiCallInfo.method} {apiCallInfo.endpoint}
-                    </code>
-                  </div>
+        const getCurrentSize = () => {
+          if (!product) return null;
+          const sizeAttr = product.attributes?.find(a => a.name === 'size');
+          return sizeAttr ? String(sizeAttr.value) : null;
+        };
 
+        const currentColor = getCurrentColor();
+        const currentSize = getCurrentSize();
 
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <div>
-                      <strong style={{ color: '#007bff' }}>Status:</strong>
-                      <span style={{ marginLeft: '5px', color: apiCallInfo.status === 200 ? '#28a745' : '#dc3545' }}>
-                        {apiCallInfo.status}
-                      </span>
-                    </div>
-                    <div>
-                      <strong style={{ color: '#007bff' }}>Total:</strong>
-                      <span style={{ marginLeft: '5px' }}>{apiCallInfo.totalVariants}</span>
-                    </div>
-                    <div>
-                      <strong style={{ color: '#007bff' }}>Returned:</strong>
-                      <span style={{ marginLeft: '5px' }}>{apiCallInfo.variantsReturned}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        // Extract unique colors from variant matrix (only colors that have variants)
+        const getUniqueColors = () => {
+          const colorsMap = new Map();
+          variantMatrix.variants.forEach(v => {
+            const colorAttr = v.attributes?.color;
+            if (colorAttr) {
+              const key = colorAttr.key;
+              const label = colorAttr.label?.en || colorAttr.label || key;
+              if (!colorsMap.has(key)) {
+                colorsMap.set(key, { key, label });
+              }
+            }
+          });
+          return Array.from(colorsMap.values());
+        };
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '20px' }}>
-            {paginatedVariants.map((variant, idx) => {
-              const variantName = getLocalizedText(variant.name, 'Unknown');
-              const variantImage = variant.images?.[0]?.url;
-              const variantProductId = variant.product?.id;
-              const variantIdForUrl = variant.id?.variantId || variant.id;
-              const currentVariantId = product?.id?.variantId || product?.id;
-              const isSelected = variantIdForUrl === currentVariantId || String(variantIdForUrl) === String(currentVariantId);
-              const sizeValue = getAttributeValue(variant, 'size');
-              const colorValue = getAttributeValue(variant, 'color');
-              const styleValue = getAttributeValue(variant, 'style');
+        // Extract unique sizes from variant matrix (only sizes that have variants)
+        const getUniqueSizes = () => {
+          const sizesSet = new Set();
+          variantMatrix.variants.forEach(v => {
+            const sizeAttr = v.attributes?.size;
+            if (sizeAttr) {
+              sizesSet.add(String(sizeAttr));
+            }
+          });
+          // Sort sizes numerically when possible
+          return Array.from(sizesSet).sort((a, b) => {
+            const numA = parseFloat(a);
+            const numB = parseFloat(b);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.localeCompare(b);
+          });
+        };
 
-              // Color name to hex mapping for CSS borders - all 18 colors from product-type.json
-              const colorToHex = (colorName) => {
-                const colorMap = {
-                  'black': '#000000',
-                  'grey': '#808080',
-                  'gray': '#808080', // Alias for grey
-                  'beige': '#F5F5DC',
-                  'white': '#FFFFFF',
-                  'blue': '#0000FF',
-                  'brown': '#A52A2A',
-                  'turquoise': '#40E0D0',
-                  'petrol': '#005F6A',
-                  'green': '#008000',
-                  'red': '#FF0000',
-                  'purple': '#800080',
-                  'pink': '#FFC0CB',
-                  'orange': '#FFA500',
-                  'yellow': '#FFFF00',
-                  'oliv': '#808000',
-                  'gold': '#FFD700',
-                  'silver': '#C0C0C0',
-                  'multicolored': '#FF00FF' // Magenta for multicolored
-                };
-                return colorMap[colorName?.toLowerCase()] || '#CCCCCC';
-              };
+        const uniqueColors = getUniqueColors();
+        const uniqueSizes = getUniqueSizes();
 
-              const borderColor = colorValue ? colorToHex(colorValue) : '#e0e0e0';
+        // Find variant by color and size from variant matrix
+        const findVariantByColorAndSize = (colorKey, size) => {
+          return variantMatrix.variants.find(v => {
+            const vColor = v.attributes?.color?.key;
+            const vSize = v.attributes?.size ? String(v.attributes.size) : null;
+            return vColor === colorKey && vSize === size;
+          });
+        };
 
-              return (
-                <Link
-                  key={variantIdForUrl || variant.id || idx}
-                  to={`/product-detail/${variantProductId}?variant=${variantIdForUrl}`}
-                  style={{ textDecoration: 'none', color: 'inherit' }}
-                >
-                  <div
-                    style={{
-                      ...variantTileStyle,
-                      borderColor: borderColor,
-                      borderWidth: '3px',
-                      backgroundColor: isSelected ? '#e3f2fd' : '#fff'
-                    }}
-                    onMouseEnter={(e) => handleVariantTileHover(e, true)}
-                    onMouseLeave={(e) => handleVariantTileHover(e, false)}
-                  >
-                    {variantImage && (
-                      <img
-                        src={variantImage}
-                        alt={variantName}
-                        style={{
-                          width: '100%',
-                          maxHeight: '150px',
-                          objectFit: 'contain',
-                          marginBottom: '10px'
-                        }}
-                      />
-                    )}
-                    <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                      {variantName}
-                    </div>
-                    {sizeValue && (
-                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
-                        Size: {sizeValue}
-                      </div>
-                    )}
-                    {colorValue && (
-                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
-                        Color: {colorValue}
-                      </div>
-                    )}
-                    {styleValue && (
-                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
-                        Style: {styleValue}
-                      </div>
-                    )}
-                    {variant.sku && (
-                      <div style={{ fontSize: '0.9em', color: '#666', marginBottom: '5px' }}>
-                        SKU: {variant.sku}
-                      </div>
-                    )}
-                    {variant.price?.value && (
-                      <div style={{ fontSize: '1.1em', fontWeight: 'bold', marginTop: '10px' }}>
-                        {formatPrice(variant.price)}
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+        // Check if a variant is in stock
+        const isInStock = (variant) => {
+          return variant && variant.availableQuantity !== null && variant.availableQuantity > 0;
+        };
 
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '15px',
-              justifyContent: 'center',
-              marginTop: '20px',
-              paddingTop: '20px',
-              borderTop: '1px solid #eee'
-            }}>
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                style={{
-                  padding: '10px 20px',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === 1 ? 0.5 : 1,
-                  backgroundColor: currentPage === 1 ? '#ccc' : '#007bff',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  if (currentPage !== 1) {
-                    e.currentTarget.style.backgroundColor = '#0056b3';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentPage !== 1) {
-                    e.currentTarget.style.backgroundColor = '#007bff';
-                  }
-                }}
-              >
-                Previous
-              </button>
-              <span style={{
-                padding: '0 15px',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                color: '#333'
+        // Check if a color has any in-stock variant with the current size
+        const isColorAvailableForCurrentSize = (colorKey) => {
+          const variant = findVariantByColorAndSize(colorKey, currentSize);
+          return variant ? isInStock(variant) : false;
+        };
+
+        // Check if a size has any in-stock variant with the current color
+        const isSizeAvailableForCurrentColor = (size) => {
+          const variant = findVariantByColorAndSize(currentColor, size);
+          return variant ? isInStock(variant) : false;
+        };
+
+        // Check if a color/size combination exists (regardless of stock)
+        const doesColorSizeCombinationExist = (colorKey, size) => {
+          return !!findVariantByColorAndSize(colorKey, size);
+        };
+
+        // Get available sizes for a color (for display purposes)
+        const getAvailableSizesForColor = (colorKey) => {
+          return variantMatrix.variants
+            .filter(v => v.attributes?.color?.key === colorKey)
+            .map(v => ({
+              size: String(v.attributes?.size || ''),
+              inStock: isInStock(v)
+            }));
+        };
+
+        // Get available colors for a size (for display purposes)
+        const getAvailableColorsForSize = (size) => {
+          return variantMatrix.variants
+            .filter(v => String(v.attributes?.size || '') === size)
+            .map(v => ({
+              colorKey: v.attributes?.color?.key,
+              inStock: isInStock(v)
+            }));
+        };
+
+        // Handle color click
+        const handleColorClick = (colorKey) => {
+          // Try to find variant with (clicked color + current size)
+          let targetVariant = findVariantByColorAndSize(colorKey, currentSize);
+
+          // If not found, try to find any variant with clicked color
+          if (!targetVariant) {
+            targetVariant = variantMatrix.variants.find(v => v.attributes?.color?.key === colorKey);
+          }
+
+          if (targetVariant) {
+            const newVariantId = targetVariant.id;
+            const productId = variantMatrix.productId;
+            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
+          }
+        };
+
+        // Handle size click
+        const handleSizeClick = (size) => {
+          // Try to find variant with (current color + clicked size)
+          let targetVariant = findVariantByColorAndSize(currentColor, size);
+
+          // If not found, try to find any variant with clicked size
+          if (!targetVariant) {
+            targetVariant = variantMatrix.variants.find(v => String(v.attributes?.size || '') === size);
+          }
+
+          if (targetVariant) {
+            const newVariantId = targetVariant.id;
+            const productId = variantMatrix.productId;
+            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
+          }
+        };
+
+        return (
+          <div style={{
+            marginTop: '30px',
+            padding: '25px',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            backgroundColor: '#fff',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+          }}>
+            <h2 style={{ marginBottom: '20px', color: '#333', fontSize: '24px' }}>
+              Variant Selector ({variantMatrix.variants.length} variants)
+            </h2>
+
+            {/* Variant Matrix API Info Card */}
+            {variantMatrixApiInfo && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '15px',
+                border: '2px solid #17a2b8',
+                borderRadius: '8px',
+                backgroundColor: '#e7f6f8',
+                boxShadow: '0 2px 8px rgba(23,162,184,0.15)'
               }}>
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                style={{
-                  padding: '10px 20px',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === totalPages ? 0.5 : 1,
-                  backgroundColor: currentPage === totalPages ? '#ccc' : '#007bff',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  if (currentPage !== totalPages) {
-                    e.currentTarget.style.backgroundColor = '#0056b3';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentPage !== totalPages) {
-                    e.currentTarget.style.backgroundColor = '#007bff';
-                  }
-                }}
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <h4 style={{ margin: 0, color: '#17a2b8', fontSize: '16px', fontWeight: 'bold' }}>
+                    🔲 Variant Matrix API Call
+                  </h4>
+                  <button
+                    onClick={() => setShowVariantMatrixApiInfo(!showVariantMatrixApiInfo)}
+                    style={{
+                      padding: '5px 10px',
+                      backgroundColor: '#17a2b8',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '11px'
+                    }}
+                  >
+                    {showVariantMatrixApiInfo ? '▼ Hide' : '▶ Show'}
+                  </button>
+                </div>
+
+                {showVariantMatrixApiInfo && (
+                  <div style={{ fontSize: '13px', color: '#333' }}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <strong style={{ color: '#17a2b8' }}>Endpoint:</strong>
+                      <code style={{
+                        display: 'block',
+                        marginTop: '3px',
+                        padding: '6px',
+                        backgroundColor: '#fff',
+                        borderRadius: '4px',
+                        border: '1px solid #ddd',
+                        fontFamily: 'monospace',
+                        fontSize: '12px',
+                        wordBreak: 'break-all'
+                      }}>
+                        {variantMatrixApiInfo.method} {variantMatrixApiInfo.endpoint}
+                      </code>
+                    </div>
+
+                    <div style={{ marginBottom: '8px' }}>
+                      <strong style={{ color: '#17a2b8' }}>Query Parameters:</strong>
+                      <div style={{
+                        marginTop: '3px',
+                        padding: '6px',
+                        backgroundColor: '#fff',
+                        borderRadius: '4px',
+                        border: '1px solid #ddd',
+                        fontFamily: 'monospace',
+                        fontSize: '11px'
+                      }}>
+                        {variantMatrixApiInfo.queryParams.map((param, idx) => (
+                          <div key={idx}>{param}</div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                      <div>
+                        <strong style={{ color: '#17a2b8' }}>Status:</strong>
+                        <span style={{ marginLeft: '5px', color: variantMatrixApiInfo.status === 200 ? '#28a745' : '#dc3545' }}>
+                          {variantMatrixApiInfo.status}
+                        </span>
+                      </div>
+                      <div>
+                        <strong style={{ color: '#17a2b8' }}>Variants:</strong>
+                        <span style={{ marginLeft: '5px' }}>{variantMatrix.variants.length}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Color Selector */}
+            {uniqueColors.length > 0 && (
+              <div style={{ marginBottom: '25px' }}>
+                <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>
+                  Color
+                  {currentColor && <span style={{ fontWeight: 'normal', marginLeft: '10px', color: '#888' }}>
+                    (selected: {currentColor})
+                  </span>}
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {uniqueColors.map(color => {
+                    const isSelected = color.key === currentColor;
+                    const combinationExists = currentSize ? doesColorSizeCombinationExist(color.key, currentSize) : true;
+                    const isAvailable = currentSize ? isColorAvailableForCurrentSize(color.key) : true;
+                    const availableSizes = getAvailableSizesForColor(color.key);
+                    const hasAnyStock = availableSizes.some(s => s.inStock);
+                    const hexColor = colorToHex(color.key);
+
+                    // Determine if we should show strike-through
+                    // Strike through if: combination exists but out of stock, OR no stock at all for this color
+                    const showStrikeThrough = !hasAnyStock || (combinationExists && !isAvailable);
+
+                    return (
+                      <button
+                        key={color.key}
+                        onClick={() => handleColorClick(color.key)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 15px',
+                          border: isSelected ? '3px solid #007bff' : '2px solid #ddd',
+                          borderRadius: '8px',
+                          backgroundColor: isSelected ? '#e3f2fd' : '#fff',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          textDecoration: showStrikeThrough ? 'line-through' : 'none',
+                          opacity: showStrikeThrough ? 0.6 : 1,
+                          boxShadow: isSelected ? '0 2px 8px rgba(0,123,255,0.25)' : 'none'
+                        }}
+                        title={`${color.label} - ${availableSizes.filter(s => s.inStock).length}/${availableSizes.length} sizes in stock`}
+                      >
+                        <span style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          backgroundColor: hexColor,
+                          border: hexColor === '#FFFFFF' ? '1px solid #ccc' : '1px solid transparent',
+                          display: 'inline-block'
+                        }}></span>
+                        <span style={{
+                          fontSize: '14px',
+                          fontWeight: isSelected ? 'bold' : 'normal',
+                          color: showStrikeThrough ? '#999' : '#333'
+                        }}>
+                          {color.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Size Selector */}
+            {uniqueSizes.length > 0 && (
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ marginBottom: '15px', color: '#555', fontSize: '18px' }}>
+                  Size
+                  {currentSize && <span style={{ fontWeight: 'normal', marginLeft: '10px', color: '#888' }}>
+                    (selected: {currentSize})
+                  </span>}
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {uniqueSizes.map(size => {
+                    const isSelected = size === currentSize;
+                    const combinationExists = currentColor ? doesColorSizeCombinationExist(currentColor, size) : true;
+                    const isAvailable = currentColor ? isSizeAvailableForCurrentColor(size) : true;
+                    const availableColors = getAvailableColorsForSize(size);
+                    const hasAnyStock = availableColors.some(c => c.inStock);
+
+                    // Strike through if: combination exists but out of stock, OR no stock at all for this size
+                    const showStrikeThrough = !hasAnyStock || (combinationExists && !isAvailable);
+
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => handleSizeClick(size)}
+                        style={{
+                          padding: '10px 20px',
+                          border: isSelected ? '3px solid #007bff' : '2px solid #ddd',
+                          borderRadius: '8px',
+                          backgroundColor: isSelected ? '#e3f2fd' : '#fff',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          textDecoration: showStrikeThrough ? 'line-through' : 'none',
+                          opacity: showStrikeThrough ? 0.6 : 1,
+                          fontSize: '14px',
+                          fontWeight: isSelected ? 'bold' : 'normal',
+                          color: showStrikeThrough ? '#999' : '#333',
+                          minWidth: '50px',
+                          boxShadow: isSelected ? '0 2px 8px rgba(0,123,255,0.25)' : 'none'
+                        }}
+                        title={`Size ${size} - ${availableColors.filter(c => c.inStock).length}/${availableColors.length} colors in stock`}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Show current combination availability */}
+            {currentColor && currentSize && (
+              <div style={{
+                marginTop: '20px',
+                padding: '15px',
+                borderRadius: '8px',
+                backgroundColor: doesColorSizeCombinationExist(currentColor, currentSize)
+                  ? (isColorAvailableForCurrentSize(currentColor) ? '#d4edda' : '#fff3cd')
+                  : '#f8d7da',
+                border: '1px solid',
+                borderColor: doesColorSizeCombinationExist(currentColor, currentSize)
+                  ? (isColorAvailableForCurrentSize(currentColor) ? '#c3e6cb' : '#ffc107')
+                  : '#f5c6cb'
+              }}>
+                {doesColorSizeCombinationExist(currentColor, currentSize) ? (
+                  isColorAvailableForCurrentSize(currentColor) ? (
+                    <span style={{ color: '#155724' }}>
+                      ✓ {currentColor} / Size {currentSize} is <strong>in stock</strong>
+                      {(() => {
+                        const variant = findVariantByColorAndSize(currentColor, currentSize);
+                        return variant ? ` (${variant.availableQuantity} available)` : '';
+                      })()}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#856404' }}>
+                      ⚠ {currentColor} / Size {currentSize} is <strong>out of stock</strong>
+                    </span>
+                  )
+                ) : (
+                  <span style={{ color: '#721c24' }}>
+                    ✗ {currentColor} / Size {currentSize} combination <strong>does not exist</strong>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
