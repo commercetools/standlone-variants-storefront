@@ -26,8 +26,12 @@ const ProductDetailPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const navigate = useNavigate();
 
-  // Ref to store scroll position during variant switches
-  const savedScrollPosition = useRef(null);
+  // Ref to track the current product ID for detecting product vs variant changes
+  const currentProductIdRef = useRef(null);
+  // Ref to track the current variant ID for detecting variant-only changes
+  const currentVariantIdRef = useRef(null);
+  // Ref to track context for detecting context vs variant changes
+  const prevContextRef = useRef(null);
   const [apiCallInfo, setApiCallInfo] = useState(null); // For other variants query
   const [showApiInfo, setShowApiInfo] = useState(false);
   const [variantByIdApiInfo, setVariantByIdApiInfo] = useState(null); // For main variant by ID
@@ -370,38 +374,60 @@ const ProductDetailPage = () => {
   // Initial fetch and refetch when product ID or variant ID changes
   useEffect(() => {
     if (id) {
-      // Reset and fetch when product ID or variant ID changes
-      setProduct(null);
-      setOtherVariants([]);
-      setAllVariants([]);
-      setVariantMatrix(null);
-      setError(null);
-      fetchProduct(id, variantId).then(() => {
-        // Restore scroll position if it was saved (variant switch)
-        if (savedScrollPosition.current !== null) {
-          const targetScroll = savedScrollPosition.current;
-          savedScrollPosition.current = null;
-          // Wait for React to finish rendering, then restore scroll
-          setTimeout(() => {
-            window.scrollTo({ top: targetScroll, behavior: 'instant' });
-          }, 50);
-        }
-      });
+      const productChanged = currentProductIdRef.current !== null && currentProductIdRef.current !== id;
+      const variantChanged = currentVariantIdRef.current !== null && currentVariantIdRef.current !== variantId;
+      const isInitialLoad = currentProductIdRef.current === null;
+
+      if (isInitialLoad || productChanged) {
+        // Initial load or product ID changed - do full fetch
+        currentProductIdRef.current = id;
+        currentVariantIdRef.current = variantId;
+        setProduct(null);
+        setOtherVariants([]);
+        setAllVariants([]);
+        setVariantMatrix(null);
+        setError(null);
+        fetchProduct(id, variantId);
+      } else if (variantChanged && variantId) {
+        // Only variant changed within same product - just fetch the new variant details
+        currentVariantIdRef.current = variantId;
+        // Keep variantMatrix, otherVariants, allVariants intact
+        fetchVariantById(variantId)
+          .then(variant => {
+            setProduct(variant);
+            setError(null);
+          })
+          .catch(err => {
+            console.error('Error fetching variant:', err);
+            setError(err.message);
+          });
+      }
+      // If neither product nor variant changed (just callbacks recreated), do nothing
     }
-  }, [id, variantId, fetchProduct]);
+  }, [id, variantId, fetchProduct, fetchVariantById]);
 
   // Refetch when context changes (store, currency, etc.)
   useEffect(() => {
     if (id) {
-      // Always refetch when context changes to get updated prices/variants
-      // Reset state first to show loading state
-      setProduct(null);
-      setOtherVariants([]);
-      setAllVariants([]);
-      setVariantMatrix(null);
-      setError(null);
-      // Then fetch with new context
-      fetchProduct(id, variantId);
+      // Build current context signature
+      const currentContextSignature = `${context.storeKey}|${context.currency}|${context.country}|${context.channelId}|${context.customerGroupId}`;
+
+      // Only do full refetch if context actually changed (not just variant)
+      if (prevContextRef.current !== null && prevContextRef.current !== currentContextSignature) {
+        // Context changed - need full refetch for new prices
+        setProduct(null);
+        setOtherVariants([]);
+        setAllVariants([]);
+        setVariantMatrix(null);
+        setError(null);
+        // Update refs to match current IDs so product useEffect doesn't re-trigger
+        currentProductIdRef.current = id;
+        currentVariantIdRef.current = variantId;
+        fetchProduct(id, variantId);
+      }
+
+      // Update the ref
+      prevContextRef.current = currentContextSignature;
     }
   }, [context.storeKey, context.currency, context.country, context.channelId, context.customerGroupId, id, variantId, fetchProduct]);
 
@@ -1172,10 +1198,8 @@ const ProductDetailPage = () => {
 
           if (targetVariant) {
             const newVariantId = targetVariant.id;
-            const productId = variantMatrix.productId;
-            // Save scroll position to ref - will be restored after fetch completes
-            savedScrollPosition.current = window.scrollY;
-            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
+            // Use `id` from URL params to keep URL consistent (could be key or UUID)
+            navigate(`/product-detail/${id}?variant=${newVariantId}`, { replace: true });
           }
         };
 
@@ -1191,10 +1215,8 @@ const ProductDetailPage = () => {
 
           if (targetVariant) {
             const newVariantId = targetVariant.id;
-            const productId = variantMatrix.productId;
-            // Save scroll position to ref - will be restored after fetch completes
-            savedScrollPosition.current = window.scrollY;
-            navigate(`/product-detail/${productId}?variant=${newVariantId}`, { replace: true });
+            // Use `id` from URL params to keep URL consistent (could be key or UUID)
+            navigate(`/product-detail/${id}?variant=${newVariantId}`, { replace: true });
           }
         };
 
